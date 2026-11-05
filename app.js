@@ -4,6 +4,15 @@
 (function () {
 "use strict";
 const CFG = window.OPSNET_CONFIG || {};
+// Accept common paste mistakes: trailing slash, /rest/v1 paths, or the dashboard link.
+if (CFG.SUPABASE_URL) {
+  let u = String(CFG.SUPABASE_URL).trim();
+  const dash = u.match(/supabase\.com\/dashboard\/project\/([a-z0-9]+)/i);
+  if (dash) u = "https://" + dash[1] + ".supabase.co";
+  const m = u.match(/^(https?:\/\/[^\/?#]+)/i);
+  CFG.SUPABASE_URL = m ? m[1] : u;
+  CFG.SUPABASE_ANON_KEY = String(CFG.SUPABASE_ANON_KEY || "").trim();
+}
 const LIVE = !!(CFG.SUPABASE_URL && CFG.SUPABASE_ANON_KEY && window.supabase);
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -152,7 +161,16 @@ async function reload() {
     S.settings = Object.assign(S.settings, d.settings || {});
     if (!S.units.some(u => u.id === S.unit)) S.unit = S.units[0] ? S.units[0].id : null;
     $("#link").textContent = LIVE ? "SECURE" : "DEMO";
-  } catch (e) { console.error(e); $("#link").textContent = "LOST"; toast("Could not reach the database. Check config.js.", true); }
+  } catch (e) {
+    console.error(e); $("#link").textContent = "LOST";
+    const msg = (e && (e.message || e.error_description || e.hint)) || String(e);
+    const hint = /relation .* does not exist|Could not find the table|schema cache/i.test(msg) ? " → Run supabase/schema.sql in the SQL Editor."
+      : /Invalid API key|JWT|apikey|No API key/i.test(msg) ? " → Check SUPABASE_ANON_KEY in config.js."
+      : /Failed to fetch|NetworkError|Load failed/i.test(msg) ? " → Check SUPABASE_URL, and that the project isn't paused."
+      : "";
+    const box = $("#demoBanner"); box.hidden = false; box.textContent = "DATABASE ERROR: " + msg + hint;
+    toast("Database error: " + msg, true);
+  }
   renderAll();
 }
 
