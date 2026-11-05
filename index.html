@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>OPSNET Activity Log</title>
+<meta name="description" content="Activity log, operations record and leaderboard.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=VT323&family=Share+Tech+Mono&family=Noto+Sans+TC:wght@700;900&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="boot" aria-hidden="true"><pre id="bootText"></pre></div>
+
+<div class="crt" id="crt">
+  <header class="bar">
+    <div class="wrap bar-in">
+      <a class="ident" href="#command">
+        <span class="ident-mark" id="identMark"></span>
+        <span class="ident-txt"><b id="identName">—</b><small><span id="identCode">—</span> · ACTIVITY LOG</small></span>
+      </a>
+      <div class="units" id="unitSwitch" role="group" aria-label="Unit"></div>
+      <nav class="nav" aria-label="Sections">
+        <a href="#command" data-tab="command">Command</a>
+        <a href="#ops" data-tab="ops">Operations Log</a>
+        <a href="#leaderboard" data-tab="leaderboard">Leaderboard</a>
+        <a href="#admin" data-tab="admin">Admin</a>
+      </nav>
+    </div>
+    <div class="ticker" aria-label="Bulletin ticker"><div class="ticker-track" id="ticker"></div></div>
+  </header>
+
+  <div class="demo" id="demoBanner" hidden>DEMO MODE · sample data · changes are not saved. Add your Supabase keys in config.js to go live.</div>
+
+  <main>
+    <!-- ═════════ COMMAND ═════════ -->
+    <section id="v-command" class="view">
+      <div class="wrap hero">
+        <div class="hero-copy">
+          <p class="kicker" id="heroKicker">—</p>
+          <h1 class="hero-title" id="heroTitle">—</h1>
+          <p class="kicker amber" id="heroTag">—</p>
+          <p class="hero-desc">The official activity log of the <span id="heroName">unit</span>. Every training, practice raid and raid is logged here and tallied into the corps leaderboard.</p>
+          <div class="hero-cta">
+            <a class="btn solid" href="#ops">View operations log ›</a>
+            <a class="btn" href="#leaderboard">Leaderboard</a>
+          </div>
+        </div>
+        <div class="hero-art">
+          <div class="scope" id="scopeWrap">
+            <canvas id="radar" width="440" height="440" aria-label="Radar scope showing recent operations"></canvas>
+            <img id="emblem" alt="" hidden>
+            <div class="scope-read"><span>BRG <b id="brg">000</b>°</span><span>CONTACTS <b id="contacts">00</b></span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="wrap stats">
+        <div class="stat"><span class="lbl">◎ Operations</span><b id="stOps">0</b></div>
+        <div class="stat"><span class="lbl">⚇ Personnel</span><b id="stPers">0</b></div>
+        <div class="stat"><span class="lbl">✦ Points awarded</span><b id="stPts">0</b></div>
+      </div>
+
+      <div class="wrap bulletin">
+        <div class="teletype">
+          <div class="tt-head"><span>FLASH TRAFFIC // COMMAND BULLETIN</span><span id="ttStamp">—</span></div>
+          <p class="tt-msg" id="bulletin"></p>
+          <p class="tt-dir" id="directive"></p>
+        </div>
+        <div class="defcon-box">
+          <div class="tt-head"><span>READINESS</span><span id="defconLbl">DEFCON —</span></div>
+          <div class="defcon" id="defcon"></div>
+          <p class="defcon-txt" id="defconTxt"></p>
+        </div>
+      </div>
+
+      <div class="wrap split">
+        <div>
+          <div class="sec-head"><h2>Recent operations</h2><a href="#ops">All →</a></div>
+          <div class="oplist" id="recentOps"></div>
+        </div>
+        <div>
+          <div class="sec-head"><h2>Top combatants</h2><a href="#leaderboard">Full →</a></div>
+          <p class="sub">This month · resets on the 1st</p>
+          <ol class="board" id="topBoard"></ol>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═════════ OPS LOG ═════════ -->
+    <section id="v-ops" class="view" hidden>
+      <div class="wrap">
+        <div class="page-head"><p class="kicker">Archive · <span class="unitCode">—</span></p><h1>Operations Log</h1></div>
+        <div class="toolbar">
+          <input class="field grow" id="q" type="search" placeholder="Search operation, host, attendee, notes…" autocomplete="off">
+          <div class="seg" id="typeSeg" role="group" aria-label="Type">
+            <button type="button" data-v="all" aria-pressed="true">All</button>
+            <button type="button" data-v="training" aria-pressed="false">Training</button>
+            <button type="button" data-v="practice" aria-pressed="false">Practice raid</button>
+            <button type="button" data-v="raid" aria-pressed="false">Raid</button>
+          </div>
+          <select class="field" id="sort" aria-label="Sort">
+            <option value="new">Newest first</option>
+            <option value="old">Oldest first</option>
+            <option value="att">Most attended</option>
+          </select>
+          <input class="field" id="month" type="month" aria-label="Month">
+        </div>
+        <p class="count" id="opCount"></p>
+        <div class="oplist" id="opList"></div>
+      </div>
+    </section>
+
+    <!-- ═════════ LEADERBOARD ═════════ -->
+    <section id="v-leaderboard" class="view" hidden>
+      <div class="wrap">
+        <div class="page-head"><p class="kicker">Standings · <span class="unitCode">—</span></p><h1>Leaderboard</h1></div>
+        <div class="toolbar">
+          <input class="field grow" id="lq" type="search" placeholder="Find an operator…" autocomplete="off">
+          <div class="seg" id="periodSeg" role="group" aria-label="Period">
+            <button type="button" data-v="month" aria-pressed="true">This month</button>
+            <button type="button" data-v="all" aria-pressed="false">All time</button>
+          </div>
+        </div>
+        <div class="tablewrap">
+          <table class="lb">
+            <thead><tr>
+              <th>#</th><th data-k="username">Operator</th><th data-k="rank">Rank</th>
+              <th class="num" data-k="training">TRN</th><th class="num" data-k="practice">PRC</th><th class="num" data-k="raid">RAID</th>
+              <th class="num" data-k="rate">Attendance</th><th class="num" data-k="points">Points</th>
+            </tr></thead>
+            <tbody id="lbBody"></tbody>
+          </table>
+        </div>
+        <p class="legend" id="legend"></p>
+      </div>
+    </section>
+
+    <!-- ═════════ ADMIN ═════════ -->
+    <section id="v-admin" class="view" hidden>
+      <div class="wrap">
+        <div class="page-head"><p class="kicker">Restricted · Authorized personnel only</p><h1>Admin Console</h1></div>
+
+        <form class="panel login" id="loginForm" hidden>
+          <p class="sub">Enter admin credentials.</p>
+          <label>Email<input class="field" id="lgEmail" type="email" autocomplete="username" required></label>
+          <label>Password<input class="field" id="lgPass" type="password" autocomplete="current-password" required></label>
+          <button class="btn solid" type="submit">Authenticate</button>
+          <p class="err" id="lgErr" hidden></p>
+        </form>
+
+        <div class="panel" id="notAdmin" hidden>
+          <p>Signed in, but this account has no admin clearance. Ask the site owner to add it to the <code>admins</code> table.</p>
+          <button class="btn" type="button" data-signout>Sign out</button>
+        </div>
+
+        <div id="console" hidden>
+          <div class="console-bar"><span id="whoami">—</span><button class="btn sm" type="button" data-signout>Sign out</button></div>
+          <div class="atabs" role="tablist">
+            <button type="button" data-a="log" aria-selected="true">Log operation</button>
+            <button type="button" data-a="ops" aria-selected="false">Manage ops</button>
+            <button type="button" data-a="people" aria-selected="false">Personnel</button>
+            <button type="button" data-a="settings" aria-selected="false">Command settings</button>
+          </div>
+
+          <!-- log op -->
+          <form class="panel" id="opForm" data-pane="log" autocomplete="off">
+            <h3 id="opFormTitle">Log an operation</h3>
+            <div class="grid4">
+              <label>Unit<select class="field" id="fUnit"></select></label>
+              <label>Type<select class="field" id="fType"><option value="training">Training</option><option value="practice">Practice raid</option><option value="raid">Raid</option></select></label>
+              <label>Date<input class="field" id="fDate" type="date" required></label>
+              <label>Host (Roblox user)<input class="field" id="fHost" list="userList" placeholder="username"></label>
+            </div>
+            <div class="grid2">
+              <label>Operation name<input class="field" id="fName" required placeholder="e.g. Training Operation"></label>
+              <label>Proof link<input class="field" id="fProof" type="url" placeholder="https:// screenshot or Discord message"></label>
+            </div>
+            <label>Summary / after-action notes<textarea class="field" id="fSum" rows="3"></textarea></label>
+            <label>Attendees <span class="hint">one per line, or separated by commas or spaces. New names are added to the roster.</span>
+              <textarea class="field mono" id="fAtt" rows="5" placeholder="danielmax&#10;rikilol999&#10;Tactical_Sheperd"></textarea></label>
+            <p class="hint" id="attPreview">0 attendees</p>
+            <div class="btnrow">
+              <button class="btn solid" type="submit" id="opSave">Log operation</button>
+              <button class="btn" type="button" id="opCancel" hidden>Cancel edit</button>
+            </div>
+          </form>
+
+          <!-- manage ops -->
+          <div class="panel" data-pane="ops" hidden>
+            <h3>Operations on file</h3>
+            <input class="field grow" id="mq" type="search" placeholder="Filter…">
+            <div class="mlist" id="mOps"></div>
+          </div>
+
+          <!-- personnel -->
+          <div class="panel" data-pane="people" hidden>
+            <h3 id="pTitle">Add personnel</h3>
+            <form id="pForm" class="grid5" autocomplete="off">
+              <label>Roblox username<input class="field" id="pUser" required></label>
+              <label>Rank<input class="field" id="pRank" list="rankList" placeholder="PVT"></label>
+              <label>Unit<select class="field" id="pUnit"></select></label>
+              <label>Joined<input class="field" id="pJoin" type="date"></label>
+              <label>Status<select class="field" id="pStatus"><option value="active">Active</option><option value="inactive">Inactive</option></select></label>
+              <div class="btnrow"><button class="btn solid" type="submit" id="pSave">Add</button><button class="btn" type="button" id="pCancel" hidden>Cancel</button></div>
+            </form>
+            <input class="field grow" id="pq" type="search" placeholder="Filter roster…">
+            <div class="mlist" id="mPeople"></div>
+          </div>
+
+          <!-- settings -->
+          <form class="panel" id="sForm" data-pane="settings" hidden>
+            <h3>Command bulletin</h3>
+            <label>Bulletin<textarea class="field" id="sBul" rows="2"></textarea></label>
+            <label>Standing directive<textarea class="field" id="sDir" rows="2"></textarea></label>
+            <div class="grid4">
+              <label>DEFCON<select class="field" id="sDef"><option>5</option><option>4</option><option>3</option><option>2</option><option>1</option></select></label>
+              <label>Training pts<input class="field" id="sPT" type="number" min="0"></label>
+              <label>Practice raid pts<input class="field" id="sPP" type="number" min="0"></label>
+              <label>Raid pts<input class="field" id="sPR" type="number" min="0"></label>
+            </div>
+            <label>Ticker lines <span class="hint">one per line</span><textarea class="field" id="sTick" rows="4"></textarea></label>
+            <h3>Units</h3>
+            <div class="mlist" id="mUnits"></div>
+            <div class="grid4">
+              <label>Code<input class="field" id="uId" placeholder="ROCMC"></label>
+              <label>Full name<input class="field" id="uName"></label>
+              <label>Hero title<input class="field" id="uLocal" placeholder="中華民國海軍陸戰隊"></label>
+              <label>Tagline<input class="field" id="uTag"></label>
+            </div>
+            <div class="btnrow">
+              <button class="btn" type="button" id="uSave">Save unit</button>
+              <button class="btn solid" type="submit">Transmit settings</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="wrap foot">
+    <span>OPSNET // <span id="clock">--:--:--Z</span> // LINK <span id="link">—</span></span>
+    <button class="btn sm" type="button" id="fxToggle" aria-pressed="true">CRT effects: on</button>
+  </footer>
+</div>
+
+<datalist id="userList"></datalist>
+<datalist id="rankList">
+  <option>PVT</option><option>PFC</option><option>LCPL</option><option>CPL</option><option>SGT</option><option>SSGT</option><option>GYSGT</option><option>MSGT</option><option>SGTMAJ</option>
+  <option>2NDLT</option><option>1STLT</option><option>CAPT</option><option>MAJ</option><option>LTCOL</option><option>COL</option><option>GEN</option>
+</datalist>
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script src="config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
