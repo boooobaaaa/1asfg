@@ -3,8 +3,8 @@
 // Fill both values from Supabase → Project Settings → API.
 // The anon key is meant to be public; the database rules in schema.sql keep writes admin-only.
 window.OPSNET_CONFIG = {
-  SUPABASE_URL: "",
-  SUPABASE_ANON_KEY: "",
+  SUPABASE_URL: "https://jppvfbfxffixvqebsrop.supabase.co/rest/v1/",
+  SUPABASE_ANON_KEY: "sb_publishable_Og9P8zIm6Run_yiGzfuvgQ_5cd-L1W1",
 
   // Optional: drop your emblem image in /assets and point to it here, e.g. "assets/emblem.png".
   // Leave empty to show the radar scope instead.
