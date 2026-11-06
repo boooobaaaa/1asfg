@@ -8,19 +8,50 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="icon" type="image/png" href="assets/favicon.png">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=VT323&family=Share+Tech+Mono&family=Noto+Sans+KR:wght@700;900&family=Noto+Sans+TC:wght@700;900&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=Share+Tech+Mono&family=Noto+Sans+KR:wght@700;900&display=swap">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-<div id="boot" aria-hidden="true"><pre id="bootText"></pre></div>
+<div id="intro" class="intro" aria-hidden="true" hidden>
+  <div class="intro-mesh"></div>
+  <div class="intro-emblem" id="introEmblem">
+    <div class="em-stage">
+      <img class="em em-main" alt="">
+      <img class="em em-g1" alt="">
+      <img class="em em-g2" alt="">
+      <span class="em-shine"></span>
+    </div>
+    <div class="em-name" id="introName">1ST AIRBORNE SPECIAL FORCES GROUP</div>
+    <div class="em-tag"><span id="introTag">第1空輸特戰團</span></div>
+  </div>
+  <div class="intro-hud" id="introHud">
+    <canvas class="intro-map" id="introMap"></canvas>
+    <div class="map-fx"></div>
+    <div class="hud-chrome top">
+      <div class="hud-ident"><span class="hud-badge"><img class="em-small" alt=""></span><span><b class="introSys">1ASFG SYSTEMS</b><small>Operations database network</small></span></div>
+      <div class="hud-net" id="introNet">NTWRK&gt;&gt;1ASFG-OPS-0000</div>
+      <div class="hud-tele" id="introTele"></div>
+      <div class="hud-menu"><span>Config</span><span>View</span><span>Tools</span><span class="hl" id="introCd">CD_00.000</span></div>
+    </div>
+    <div class="map-label region" id="introRegion"></div>
+    <div class="reticle" id="introReticle"><svg viewBox="0 0 200 200" aria-hidden="true"><circle cx="100" cy="100" r="92" class="ring"/><circle cx="100" cy="100" r="70" class="ring2"/><path d="M100 2v18M100 180v18M2 100h18M180 100h18" class="tick"/><rect x="88" y="88" width="24" height="24" class="core"/></svg></div>
+    <div class="map-label target" id="introTarget"></div>
+    <div class="hud-chrome bottom">
+      <div class="feeds"><b>Feeds</b><pre id="introFeeds"></pre></div>
+      <p class="subtitle" id="introSub"></p>
+      <div class="geo"><b>Geo. comms</b><svg viewBox="0 0 64 32" class="globe" aria-hidden="true"><ellipse cx="32" cy="16" rx="30" ry="14"/><ellipse cx="32" cy="16" rx="12" ry="14"/><path d="M2 16h60M6 8h52M6 24h52M32 2v28"/></svg></div>
+    </div>
+  </div>
+  <button class="intro-skip" type="button" id="introSkip">Skip intro ›</button>
+</div>
 
 <div class="crt" id="crt">
-  <header class="bar">
-    <div class="wrap bar-in">
+  <header class="hud-top">
+    <div class="wrap hud-top-in">
       <a class="ident" href="#command">
         <span class="ident-mark" id="identMark"></span>
-        <span class="ident-txt"><b id="identName">—</b><small><span id="identCode">—</span> · ACTIVITY LOG</small></span>
+        <span class="ident-txt"><b id="identName">—</b><small id="identSub">Operations database network</small></span>
       </a>
       <div class="units" id="unitSwitch" role="group" aria-label="Unit"></div>
       <nav class="nav" aria-label="Sections">
@@ -30,8 +61,13 @@
         <a href="#roster" data-tab="roster">Roster</a>
         <a href="#admin" data-tab="admin">Admin</a>
       </nav>
+      <div class="readout" aria-label="System status">
+        <span>DTG <b id="dtg">—</b></span>
+        <span>ZULU <b id="clock">--:--:--Z</b></span>
+        <span>LINK <b id="link">—</b></span>
+      </div>
     </div>
-    <div class="ticker" aria-label="Bulletin ticker"><div class="ticker-track" id="ticker"></div></div>
+    <div class="ruler" aria-hidden="true"></div>
   </header>
 
   <div class="demo" id="demoBanner" hidden>DEMO MODE · sample data · changes are not saved. Add your Supabase keys in config.js to go live.</div>
@@ -39,23 +75,25 @@
   <main>
     <!-- ═════════ COMMAND ═════════ -->
     <section id="v-command" class="view">
-      <div class="wrap hero">
-        <div class="hero-copy">
-          <p class="kicker" id="heroKicker">—</p>
-          <h1 class="hero-title" id="heroTitle">—</h1>
-          <p class="kicker amber" id="heroTag">—</p>
-          <p class="hero-desc">The official activity log of the <span id="heroName">unit</span>. Every training, practice raid and raid is logged here and tallied into the group leaderboard.</p>
-          <div class="hero-cta">
-            <a class="btn solid" href="#ops">View operations log ›</a>
-            <a class="btn" href="#leaderboard">Leaderboard</a>
-            <a class="btn" href="#roster">Order of battle</a>
-          </div>
-        </div>
-        <div class="hero-art">
-          <div class="scope" id="scopeWrap">
-            <canvas id="radar" width="440" height="440" aria-label="Radar scope showing recent operations"></canvas>
-            <img id="emblem" alt="" hidden>
-            <div class="scope-read"><span>BRG <b id="brg">000</b>°</span><span>CONTACTS <b id="contacts">00</b></span></div>
+      <div class="hero">
+        <canvas class="hero-map" id="heroMap" aria-hidden="true"></canvas>
+        <div class="map-fx"></div>
+        <div class="hero-shade"></div>
+        <div class="map-label region" id="heroRegion"></div>
+        <div class="reticle sm" id="heroReticle"><svg viewBox="0 0 200 200" aria-hidden="true"><circle cx="100" cy="100" r="92" class="ring"/><circle cx="100" cy="100" r="70" class="ring2"/><path d="M100 2v18M100 180v18M2 100h18M180 100h18" class="tick"/><rect x="88" y="88" width="24" height="24" class="core"/></svg></div>
+        <div class="map-label target" id="heroTarget"></div>
+        <div class="wrap hero-in">
+          <div class="hero-copy">
+            <p class="kicker" id="heroKicker">—</p>
+            <h1 class="hero-title" id="heroTitle">—</h1>
+            <p class="strip"><span id="heroStrip">—</span></p>
+            <p class="kicker dim" id="heroTag">—</p>
+            <p class="hero-desc">The official activity log of the <span id="heroName">unit</span>. Every training, practice raid and raid is logged here and tallied into the group leaderboard.</p>
+            <div class="hero-cta">
+              <a class="btn solid" href="#ops">View operations log ›</a>
+              <a class="btn" href="#leaderboard">Leaderboard</a>
+              <a class="btn" href="#roster">Order of battle</a>
+            </div>
           </div>
         </div>
       </div>
@@ -301,9 +339,16 @@
     </section>
   </main>
 
-  <footer class="wrap foot">
-    <span>OPSNET // <span id="clock">--:--:--Z</span> // LINK <span id="link">—</span></span>
-    <button class="btn sm" type="button" id="fxToggle" aria-pressed="true">CRT effects: on</button>
+  <footer class="hud-bot">
+    <div class="hud-bot-in">
+      <div class="feeds"><b>Feeds</b><span id="feeds">—</span></div>
+      <div class="ticker" aria-label="Bulletin ticker"><div class="ticker-track" id="ticker"></div></div>
+      <div class="geo"><b>Geo. comms</b><svg viewBox="0 0 64 32" class="globe" aria-hidden="true"><ellipse cx="32" cy="16" rx="30" ry="14"/><ellipse cx="32" cy="16" rx="12" ry="14"/><path d="M2 16h60M6 8h52M6 24h52M32 2v28"/></svg></div>
+      <div class="bot-btns">
+        <button class="btn sm" type="button" id="replayIntro">Replay intro</button>
+        <button class="btn sm" type="button" id="fxToggle" aria-pressed="true">Screen FX: on</button>
+      </div>
+    </div>
   </footer>
 </div>
 

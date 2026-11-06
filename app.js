@@ -271,7 +271,7 @@ function standings(period) {
 /* ─── render: chrome & command ─────────────────────────────────────── */
 function renderChrome() {
   const u = curUnit();
-  $("#identName").textContent = u.name; $("#identCode").textContent = u.id;
+  $("#identName").textContent = u.id + " Systems"; $("#identSub").textContent = u.name;
   $$(".unitCode").forEach(x => (x.textContent = u.id));
   document.title = (u.id && u.id !== "—" ? u.id + " · " : "") + (CFG.SITE_NAME || "OPSNET") + " Activity Log";
   const sw = $("#unitSwitch"); sw.replaceChildren(...S.units.map(x => el("button", { type: "button", "aria-pressed": String(x.id === S.unit), onclick: () => { S.unit = x.id; store.set("unit", x.id); renderAll(); } }, x.id)));
@@ -291,7 +291,7 @@ function renderChrome() {
 
 function renderCommand() {
   const u = curUnit();
-  $("#heroKicker").textContent = u.name + " · " + u.id;
+  $("#heroKicker").textContent = "Operations database // " + u.id; $("#heroStrip").textContent = u.name;
   const title = $("#heroTitle"); const local = u.name_local || u.name;
   title.textContent = local; title.classList.toggle("latin", !/[㐀-鿿가-힯]/.test(local));
   $("#heroTag").textContent = u.tagline || ""; $("#heroName").textContent = u.name;
@@ -324,7 +324,8 @@ function renderCommand() {
   const top = month.filter(r => r.points > 0).sort((a, b) => b.points - a.points || a.username.localeCompare(b.username)).slice(0, 6);
   $("#topBoard").replaceChildren(...(top.length ? top.map((r, i) => el("li", null, el("span", { class: "n" }, "#" + (i + 1)), el("span", { class: "u" }, el("em", { class: "rk", title: rankName(r.rank) }, r.rank), r.username), el("span", { class: "p" }, r.points + " pts")))
     : [el("li", { style: "display:block;color:var(--fg-dim)" }, "No points awarded this month yet.")]));
-  radar.setBlips(ops);
+  heroMap.setOps(ops);
+  renderFeeds(ops);
 }
 const byNewest = (a, b) => (b.date || "").localeCompare(a.date || "") || (b.num || 0) - (a.num || 0);
 
@@ -616,97 +617,315 @@ function route() {
   const h = location.hash.slice(1); const t = TABS.includes(h) ? h : "command";
   TABS.forEach(x => ($("#v-" + x).hidden = x !== t));
   $$(".nav a").forEach(a => a.dataset.tab === t ? a.setAttribute("aria-current", "page") : a.removeAttribute("aria-current"));
-  radar.active(t === "command");
+  heroMap.active(t === "command" && !intro.running());
 }
 window.addEventListener("hashchange", () => { route(); window.scrollTo(0, 0); });
 
 function renderAll() { renderChrome(); renderCommand(); renderOps(); renderLB(); renderRoster(); renderAdmin(); }
 
-/* ─── radar scope ──────────────────────────────────────────────────── */
-const radar = (() => {
-  const c = $("#radar"), x = c.getContext("2d"); const W = c.width, R = W / 2 - 6;
+/* ─── terrain generator (procedural "satellite" imagery) ───────────── */
+const Terrain = (() => {
+  const SIZE = 760;
+  let promise = null, holdMs = 0;
+  function rng(seed) { let s = (seed >>> 0) || 1; return () => { s ^= s << 13; s >>>= 0; s ^= s >>> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; }; }
+  function noise(seed) {
+    const r = rng(seed), p = new Uint8Array(512), perm = [...Array(256).keys()];
+    for (let i = 255; i > 0; i--) { const k = Math.floor(r() * (i + 1)); [perm[i], perm[k]] = [perm[k], perm[i]]; }
+    for (let i = 0; i < 512; i++) p[i] = perm[i & 255];
+    const V = new Float32Array(256); for (let i = 0; i < 256; i++) V[i] = r();
+    return (x, y) => {
+      const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi, X = xi & 255, Y = yi & 255;
+      const a = V[p[p[X] + Y]], b = V[p[p[X + 1] + Y]], c = V[p[p[X] + Y + 1]], d = V[p[p[X + 1] + Y + 1]];
+      const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+      return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+    };
+  }
+  function fbm(n, x, y, oct) { let s = 0, a = .5, f = 1, t = 0; for (let i = 0; i < oct; i++) { s += a * n(x * f, y * f); t += a; a *= .5; f *= 2.03; } return s / t; }
+  function layer(kind, seed) {
+    const S2 = SIZE, c = document.createElement("canvas"); c.width = c.height = S2;
+    const g = c.getContext("2d"), img = g.createImageData(S2, S2), d = img.data;
+    const n1 = noise(seed), n2 = noise(seed + 7), n3 = noise(seed + 13), n4 = noise(seed + 29), r = rng(seed + 3);
+    const base = kind === "region" ? 3 : kind === "valley" ? 4.4 : 7;
+    const Hm = new Float32Array(S2 * S2), Al = new Float32Array(S2 * S2), Wt = new Uint8Array(S2 * S2);
+    const cell = 9, cells = Math.ceil(S2 / cell) + 2, rc = rng(seed + 99), NC = cells * cells;
+    const jx = new Float32Array(NC), jy = new Float32Array(NC), tone = new Float32Array(NC), ang = new Float32Array(NC);
+    for (let i = 0; i < NC; i++) { jx[i] = rc(); jy[i] = rc(); tone[i] = rc(); ang[i] = rc() * Math.PI; }
+    for (let y = 0; y < S2; y++) for (let x = 0; x < S2; x++) {
+      const u = x / S2 * base, v = y / S2 * base, i = y * S2 + x;
+      const e = fbm(n1, u, v, 6), ridge = 1 - Math.abs(fbm(n2, u * 1.9, v * 1.9, 5) * 2 - 1);
+      const fine = n4(u * 22, v * 22) - .5;
+      let h = e * .75 + ridge * ridge * .35 + fine * .015, a;
+      if (kind === "region") {
+        if (e < .44) { Wt[i] = 1; a = 30 + fbm(n3, u * 5, v * 5, 2) * 14; h = .44; }
+        else a = 118 + (e - .44) * 150 + fine * 18 + (e < .452 ? 30 : 0);
+      } else {
+        a = 128 + (fbm(n3, u * 3, v * 3, 3) - .5) * 40 + fine * 22;
+        const rv = Math.abs(fbm(n3, u * .45, v * .45, 3) - .5);
+        if (rv < .03) { a = 206 + (.03 - rv) * 600 + fine * 10; h -= .02; Wt[i] = 2; }
+        else if (rv < .05) a -= 22;
+        else if (kind === "fields" && e > .46 && rv > .065) {
+          const cx = Math.floor(x / cell), cy = Math.floor(y / cell); let best = 1e9, second = 1e9, k0 = 0;
+          for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) {
+            const gx = cx + ox, gy = cy + oy; if (gx < 0 || gy < 0 || gx >= cells || gy >= cells) continue;
+            const k = gy * cells + gx, px = (gx + jx[k]) * cell, py = (gy + jy[k]) * cell, dd = (px - x) * (px - x) + (py - y) * (py - y);
+            if (dd < best) { second = best; best = dd; k0 = k; } else if (dd < second) second = dd;
+          }
+          const rows = Math.sin((x * Math.cos(ang[k0]) + y * Math.sin(ang[k0])) * 1.9) > .55 ? -9 : 0;
+          a = 92 + tone[k0] * 70 + rows + fine * 30;
+          if (Math.sqrt(second) - Math.sqrt(best) < 1.1) a = 74 + fine * 14;
+          h = h * .4 + .3;
+        }
+      }
+      Hm[i] = h; Al[i] = a;
+    }
+    const gain = kind === "region" ? 2600 : 1900;
+    for (let y = 0; y < S2; y++) for (let x = 0; x < S2; x++) {
+      const i = y * S2 + x, x0 = Math.max(0, x - 1), y0 = Math.max(0, y - 1), x1 = Math.min(S2 - 1, x + 1), y1 = Math.min(S2 - 1, y + 1);
+      const shade = Wt[i] === 1 ? 0 : (Hm[y0 * S2 + x0] - Hm[y1 * S2 + x1]) * gain;
+      let L = Al[i] + Math.max(-70, Math.min(70, shade)) + (r() - .5) * 12;
+      const o = i * 4;
+      d[o] = Math.max(0, Math.min(255, L * 1.04 + 6)); d[o + 1] = Math.max(0, Math.min(255, L * .98 + 2)); d[o + 2] = Math.max(0, Math.min(255, L * .86 - 4)); d[o + 3] = 255;
+    }
+    g.putImageData(img, 0, 0);
+    if (kind !== "region") {
+      const rb = rng(seed + 51), clusters = kind === "fields" ? 90 : 34, sz = kind === "fields" ? 4.5 : 2.6;
+      for (let k = 0; k < clusters; k++) {
+        const cx = rb() * S2, cy = rb() * S2, n = 8 + rb() * 26, spread = 20 + rb() * 34;
+        for (let m = 0; m < n; m++) {
+          const w = 1.5 + rb() * sz, h = 1.5 + rb() * sz, x = cx + (rb() - .5) * spread * 2, y = cy + (rb() - .5) * spread * 2;
+          g.fillStyle = "rgba(18,16,12,.5)"; g.fillRect(x + 1.2, y + 1.2, w, h);
+          g.fillStyle = rb() > .45 ? "rgba(226,216,194,.9)" : "rgba(160,150,128,.9)"; g.fillRect(x, y, w, h);
+        }
+      }
+    }
+    return c;
+  }
+  const wait = ms => new Promise(res => setTimeout(res, ms));
+  return {
+    hold(ms) { holdMs = ms; },
+    layers() {
+      if (!promise) promise = (async () => {
+        if (holdMs) await wait(holdMs);
+        const seed = 1983, out = [];
+        for (const k of ["region", "valley", "fields"]) { await wait(16); out.push(layer(k, seed + out.length * 101)); }
+        return out;
+      })();
+      return promise;
+    },
+    // zoom through the layer stack: p = 0 (region) … 2 (fields)
+    draw(ctx, W, H, layers, p, rot, ox = 0, oy = 0, blur = 0) {
+      ctx.fillStyle = "#0a0a09"; ctx.fillRect(0, 0, W, H);
+      const n = layers.length; p = Math.max(0, Math.min(n - 1, p));
+      const i = Math.min(n - 2, Math.floor(p)), t = p - i, D = Math.hypot(W, H) * 1.08;
+      const one = (L, s, a) => { if (a <= 0.003) return; ctx.save(); ctx.globalAlpha = a; ctx.translate(W / 2 + ox, H / 2 + oy); ctx.rotate(rot); const z = D * s; ctx.drawImage(L, -z / 2, -z / 2, z, z); ctx.restore(); };
+      const useBlur = blur > .3 && "filter" in ctx; if (useBlur) ctx.filter = "blur(" + blur.toFixed(1) + "px)";
+      one(layers[i], Math.pow(3, t), 1);
+      one(layers[i + 1], Math.pow(3, t) / 3, t * t * (3 - 2 * t));
+      if (useBlur) ctx.filter = "none";
+    }
+  };
+})();
+const fitCanvas = (cv, cap = 1.5) => {
+  const dpr = Math.min(cap, window.devicePixelRatio || 1), W = Math.max(1, Math.round(cv.clientWidth * dpr)), H = Math.max(1, Math.round(cv.clientHeight * dpr));
+  if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
+  return { W, H, dpr };
+};
+const hashStr = s => { let h = 2166136261; for (const ch of String(s)) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619) >>> 0; } h ^= h >>> 13; h = Math.imul(h, 2246822507) >>> 0; return (h ^ (h >>> 16)) >>> 0; };
+const gridRef = s => { const h = hashStr(s); return "52S CG " + String(h % 10000).padStart(4, "0") + " " + String((h >>> 14) % 10000).padStart(4, "0"); };
+function labelStack(box, lines) {
+  box.replaceChildren(...lines.filter(Boolean).map(([txt, cls]) => el("span", { class: cls || null }, txt)));
+}
+
+/* ─── hero map: terrain + tracking reticle cycling recent operations ─ */
+const heroMap = (() => {
+  const cv = $("#heroMap"), ctx = cv.getContext("2d"), ret = $("#heroReticle"), tgt = $("#heroTarget"), reg = $("#heroRegion");
   const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
-  let blips = [], ang = 0, on = true, raf = 0, last = 0;
-  const col = { training: "127,182,255", practice: "255,200,87", raid: "255,90,74" };
-  const hash = s => { let h = 2166136261; for (const ch of String(s)) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619) >>> 0; } h ^= h >>> 13; h = Math.imul(h, 2246822507) >>> 0; return (h ^ (h >>> 16)) >>> 0; };
-  function setBlips(ops) {
-    const now = Date.now();
-    blips = ops.slice().sort(byNewest).slice(0, 24).map(o => {
-      const age = Math.max(0, (now - new Date(o.date + "T12:00:00").getTime()) / 864e5);
-      return { a: (hash(o.id) % 3600) / 3600 * Math.PI * 2, r: Math.min(0.94, 0.66 + age / 160), c: col[o.type] || "157,255,176", lit: 0 };
-    });
-    $("#contacts").textContent = String(blips.length).padStart(2, "0");
+  let layers = null, ops = [], idx = -1, on = false, raf = 0, cycle = 0, sub = 0;
+  const pan = { x: 0, y: 0, tx: 0, ty: 0 };
+  function spot() { const W = cv.clientWidth, H = cv.clientHeight; return W < 760 ? { x: W * .7, y: H * .15 } : { x: W * .7, y: H * .46 }; }
+  function place() {
+    const s = spot(); ret.style.left = s.x + "px"; ret.style.top = s.y + "px";
+    const W = cv.clientWidth; const lw = tgt.offsetWidth || 280;
+    let lx = s.x + 34; if (lx + lw > W - 16) lx = Math.max(16, s.x - lw - 34);
+    tgt.style.left = lx + "px"; tgt.style.top = (s.y - 14) + "px";
+  }
+  function show(o, locked) {
+    if (!o) { labelStack(tgt, [["No operations logged", "s"]]); labelStack(reg, [["AO " + curUnit().id + " // AWAITING TRAFFIC"]]); place(); return; }
+    const det = fm(o.detachment);
+    labelStack(reg, [[(det ? "AO " + (det.name_local || det.id) : "AO " + curUnit().id) + " // " + gridRef(o.id)]]);
+    labelStack(tgt, locked ? [["Located", "s"], [code(o.num) + " · " + (TYPES[o.type] || o.type)], [o.name || "Operation"], [detShort(o.detachment) + " · " + (o.date || "")], [(o.attendees || []).length + " present · host " + (o.host || "—")]]
+      : [["Tracking...", "s blink"], [code(o.num)], [o.name || "Operation"]]);
+    ret.classList.toggle("lock", locked); place();
+  }
+  function next() {
+    if (!ops.length) { show(null); return; }
+    idx = (idx + 1) % ops.length; const o = ops[idx];
+    const h = hashStr(o.id); pan.tx = ((h % 200) - 100) * .9; pan.ty = (((h >>> 9) % 160) - 80) * .9;
+    ret.classList.remove("lock"); void ret.offsetWidth;
+    show(o, false); clearTimeout(sub); sub = setTimeout(() => show(o, true), reduce ? 0 : 1100);
   }
   function frame(t) {
-    const dt = Math.min(64, t - (last || t)); last = t; ang = (ang + dt * 0.0011) % (Math.PI * 2);
-    x.clearRect(0, 0, W, W); x.save(); x.translate(W / 2, W / 2);
-    x.fillStyle = "#031006"; x.beginPath(); x.arc(0, 0, R, 0, 7); x.fill();
-    x.strokeStyle = "rgba(157,255,176,.18)"; x.lineWidth = 1;
-    for (let i = 1; i <= 4; i++) { x.beginPath(); x.arc(0, 0, R * i / 4, 0, 7); x.stroke(); }
-    for (let i = 0; i < 12; i++) { const a = i * Math.PI / 6; x.beginPath(); x.moveTo(0, 0); x.lineTo(Math.cos(a) * R, Math.sin(a) * R); x.stroke(); }
-    x.fillStyle = "rgba(157,255,176,.45)"; x.font = "14px VT323, monospace"; x.textAlign = "center"; x.textBaseline = "middle";
-    ["000", "090", "180", "270"].forEach((s, i) => { const a = i * Math.PI / 2 - Math.PI / 2; x.fillText(s, Math.cos(a) * (R - 14), Math.sin(a) * (R - 14)); });
-    for (let i = 0; i < 72; i++) { const a = i * Math.PI / 36, l = i % 6 ? 5 : 10; x.beginPath(); x.moveTo(Math.cos(a) * R, Math.sin(a) * R); x.lineTo(Math.cos(a) * (R - l), Math.sin(a) * (R - l)); x.stroke(); }
-    for (let i = 0; i < 40; i++) {
-      const a0 = ang - i * 0.02; x.fillStyle = "rgba(80,255,120," + (0.22 * (1 - i / 40)) + ")";
-      x.beginPath(); x.moveTo(0, 0); x.arc(0, 0, R, a0 - 0.02, a0); x.closePath(); x.fill();
-    }
-    x.strokeStyle = "rgba(157,255,176,.95)"; x.lineWidth = 2; x.beginPath(); x.moveTo(0, 0); x.lineTo(Math.cos(ang) * R, Math.sin(ang) * R); x.stroke();
-    for (const b of blips) {
-      const d = ((ang - b.a) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
-      if (d < 0.06) b.lit = 1; else b.lit = Math.max(0.12, b.lit - dt * 0.00035);
-      const px = Math.cos(b.a) * b.r * R, py = Math.sin(b.a) * b.r * R;
-      x.fillStyle = "rgba(" + b.c + "," + b.lit + ")"; x.shadowColor = "rgba(" + b.c + ",1)"; x.shadowBlur = 12 * b.lit;
-      x.beginPath(); x.arc(px, py, 4, 0, 7); x.fill(); x.shadowBlur = 0;
-    }
-    x.restore();
-    $("#brg").textContent = String(Math.round(((ang * 180 / Math.PI) + 90) % 360)).padStart(3, "0");
-    if (on && !reduce) raf = requestAnimationFrame(frame);
+    if (!layers) return;
+    const { W, H, dpr } = fitCanvas(cv);
+    pan.x += (pan.tx - pan.x) * .03; pan.y += (pan.ty - pan.y) * .03;
+    const p = 1.52 + Math.sin(t / 9000) * .07, rot = -.42 + Math.sin(t / 14000) * .03;
+    Terrain.draw(ctx, W, H, layers, p, rot, pan.x * dpr, pan.y * dpr, 0);
+    if (on && !reduce && !document.hidden) raf = requestAnimationFrame(frame);
   }
-  return { setBlips(o) { setBlips(o); if (reduce) frame(performance.now()); }, active(v) { on = v; cancelAnimationFrame(raf); last = 0; if (v) raf = requestAnimationFrame(frame); } };
+  function start() { cancelAnimationFrame(raf); if (layers) raf = requestAnimationFrame(frame); clearInterval(cycle); if (!reduce) cycle = setInterval(next, 6000); }
+  window.addEventListener("resize", () => { place(); if (reduce && layers) frame(0); });
+  document.addEventListener("visibilitychange", () => { if (on && !document.hidden) start(); });
+  return {
+    setOps(list) { const fresh = list.slice().sort(byNewest).slice(0, 8); const changed = fresh.map(o => o.id).join() !== ops.map(o => o.id).join(); ops = fresh; if (changed || idx < 0) { idx = -1; next(); } },
+    active(v) {
+      on = v; cancelAnimationFrame(raf); clearInterval(cycle);
+      if (!v) return;
+      if (!layers) Terrain.layers().then(L => { layers = L; if (on) { start(); if (reduce) frame(0); } });
+      else { start(); if (reduce) frame(0); }
+    }
+  };
 })();
 
-/* ─── emblem, clock, FX, boot ──────────────────────────────────────── */
-// Emblem: config.js EMBLEM if set, otherwise assets/emblem.png; falls back to a drawn radar mark if the image is missing.
+function renderFeeds(ops) {
+  const m = thisMonth(), P = pts(), mo = ops.filter(o => (o.date || "").startsWith(m));
+  const c = t => mo.filter(o => o.type === t).length;
+  const total = mo.reduce((s, o) => s + (o.attendees || []).length * (+P[o.type] || 0), 0);
+  $("#feeds").replaceChildren("TRN ", el("b", null, c("training")), "  PRC ", el("b", null, c("practice")), "  RAID ", el("b", null, c("raid")), "  PTS ", el("b", null, total));
+}
+
+/* ─── emblem, clock, FX ────────────────────────────────────────────── */
+// Emblem: config.js EMBLEM if set, otherwise assets/emblem.png; falls back to a drawn mark if the image is missing.
 const EMBLEM = CFG.EMBLEM || "assets/emblem.png";
 {
-  const big = $("#emblem"); big.onerror = () => (big.hidden = true); big.onload = () => (big.hidden = false); big.src = EMBLEM;
+  $$(".em, .em-small").forEach(i => { i.src = EMBLEM; });
+  $("#intro").style.setProperty("--em-mask", "url(\"" + EMBLEM + "\")");
   const small = el("img", { src: EMBLEM, alt: "" }); small.onerror = () => { small.remove(); drawMark(); }; $("#identMark").append(small);
 }
 function drawMark() {
   const m = el("canvas", { width: 76, height: 76 }); $("#identMark").append(m);
-  const g = m.getContext("2d"); g.strokeStyle = "#9dffb0"; g.lineWidth = 2;
+  const g = m.getContext("2d"); g.strokeStyle = "#c9a24b"; g.lineWidth = 2;
   [30, 20, 10].forEach(r => { g.beginPath(); g.arc(38, 38, r, 0, 7); g.stroke(); });
-  g.beginPath(); g.moveTo(38, 38); g.lineTo(62, 18); g.stroke(); g.fillStyle = "#e6d35a"; g.beginPath(); g.arc(50, 48, 3, 0, 7); g.fill();
+  g.beginPath(); g.moveTo(38, 38); g.lineTo(62, 18); g.stroke();
 }
-setInterval(() => ($("#clock").textContent = new Date().toISOString().slice(11, 19) + "Z"), 1000);
+const MON = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+function tickClock() {
+  const d = new Date();
+  $("#clock").textContent = d.toISOString().slice(11, 19) + "Z";
+  $("#dtg").textContent = String(d.getUTCDate()).padStart(2, "0") + String(d.getUTCHours()).padStart(2, "0") + String(d.getUTCMinutes()).padStart(2, "0") + "Z " + MON[d.getUTCMonth()] + " " + String(d.getUTCFullYear()).slice(2);
+}
+tickClock(); setInterval(tickClock, 1000);
 
-function setFx(v) { document.body.classList.toggle("fx", v); const b = $("#fxToggle"); b.setAttribute("aria-pressed", String(v)); b.textContent = "CRT effects: " + (v ? "on" : "off"); store.set("fx", v); }
+function setFx(v) { document.body.classList.toggle("fx", v); const b = $("#fxToggle"); b.setAttribute("aria-pressed", String(v)); b.textContent = "Screen FX: " + (v ? "on" : "off"); store.set("fx", v); }
 $("#fxToggle").addEventListener("click", () => setFx(!document.body.classList.contains("fx")));
 setFx(store.get("fx", true));
 
-function boot() {
-  const box = $("#boot"), pre = $("#bootText");
-  let seen = false; try { seen = sessionStorage.getItem("opsnet.boot") === "1"; sessionStorage.setItem("opsnet.boot", "1"); } catch {}
-  if (seen || matchMedia("(prefers-reduced-motion: reduce)").matches) { box.remove(); return; }
-  const lines = ["OPSNET SECURE TERMINAL  REV 4.2", "COPYRIGHT (C) 1983 // CLASSIFIED", "", "MEMORY CHECK ........ 640K OK", "CRYPTO MODULE ....... KEYED", "UPLINK .............. " + (LIVE ? "ESTABLISHED" : "DEMO LOOPBACK"), "AUTHENTICATING ...... GRANTED", "", "> LOADING ORDER OF BATTLE"];
-  let i = 0, j = 0; pre.classList.add("cursor");
-  const step = () => {
-    if (i >= lines.length) { setTimeout(() => { box.classList.add("done"); setTimeout(() => box.remove(), 450); }, 250); return; }
-    const L = lines[i]; j = Math.min(L.length, j + 3);
-    pre.textContent = lines.slice(0, i).join("\n") + (i ? "\n" : "") + L.slice(0, j);
-    if (j >= L.length) { i++; j = 0; setTimeout(step, 70); } else setTimeout(step, 12);
+/* ─── intro: emblem reveal → satellite tracking HUD ────────────────── */
+const intro = (() => {
+  const box = $("#intro"), reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let timers = [], raf = 0, running = false, feedT = 0;
+  const T = (ms, fn) => timers.push(setTimeout(fn, ms));
+  function seen() { try { return sessionStorage.getItem("opsnet.intro") === "1"; } catch { return false; } }
+  function mark() { try { sessionStorage.setItem("opsnet.intro", "1"); } catch {} }
+  function names() {
+    const u = curUnit(); if (!u || u.id === "—") return;
+    $("#introName").textContent = u.name; $("#introTag").textContent = u.name_local || u.id;
+    $$(".introSys").forEach(e => (e.textContent = u.id + " Systems"));
+    $("#introNet").textContent = "NTWRK>>" + u.id + "-OPS-" + (hashStr(u.name) % 0xffff).toString(16).toUpperCase().padStart(4, "0");
+  }
+  function featured() {
+    const top = standings("month").filter(r => r.points > 0).sort((a, b) => b.points - a.points)[0];
+    if (top) {
+      const p = person(top.username) || {}, c = fm(p.company), d = fm(top.detachment);
+      const hq = p.billet && BILLETS[p.billet] && BILLETS[p.billet].level === "hq";
+      return { region: d ? (d.region || d.name) : "Group headquarters", key: top.username,
+        lines: [top.rank + ". " + top.username, hq ? BILLETS[p.billet].name : c && d ? c.name + ", " + d.name : d ? d.name : "Awaiting assignment", curUnit().name],
+        aoLabel: d ? "AO " + (d.name_local || d.id) : "AO " + curUnit().id };
+    }
+    const o = unitOps().slice().sort(byNewest)[0];
+    if (o) return { region: (fm(o.detachment) || {}).region || "Theater", key: o.id, lines: [code(o.num) + " · " + (o.name || ""), detShort(o.detachment), curUnit().name], aoLabel: "AO " + curUnit().id };
+    return { region: "Theater", key: "x", lines: [curUnit().name, "Operations database online"], aoLabel: "AO " + curUnit().id };
+  }
+  function feeds() {
+    const r = () => (Math.random() * .9).toFixed(2), rows = ["C_STEP", "N_GAIN", "T_LOCK", "R_HOLD", "Z_DRFT"];
+    $("#introFeeds").textContent = "POINTER   X     Y     Z\n" + rows.map(k => k.padEnd(9) + " " + r() + "  " + r() + "  " + r()).join("\n");
+    $("#introTele").textContent = "SAT_LINK>> KH-" + (1983 + Math.floor(Math.random() * 3)) + "\nCALIBRATION_____OK\nALIGNMENT___" + (30 + Math.floor(Math.random() * 9)) + "°" + String(Math.floor(Math.random() * 60)).padStart(2, "0") + "'";
+    $("#introCd").textContent = "CD_" + (performance.now() / 1000).toFixed(3).padStart(7, "0");
+  }
+  function type(elm, speaker, text, ms) {
+    const full = text.length > 110 ? text.slice(0, 107).replace(/\s+\S*$/, "") + "…" : text; let i = 0;
+    const go = () => { elm.replaceChildren(el("span", { class: "sp" }, speaker + ": "), full.slice(0, i)); if (i++ < full.length) T(ms, go); };
+    go();
+  }
+  function hud(layers) {
+    box.classList.add("hud");
+    const cv = $("#introMap"), ctx = cv.getContext("2d"), ret = $("#introReticle"), tgt = $("#introTarget"), reg = $("#introRegion");
+    const f = featured();
+    labelStack(reg, [[f.region]]); tgt.replaceChildren();
+    const place = (x, y) => {
+      ret.style.left = x + "px"; ret.style.top = y + "px";
+      const W = cv.clientWidth, lw = tgt.offsetWidth || 300; let lx = x + 40; if (lx + lw > W - 16) lx = Math.max(16, x - lw - 40);
+      tgt.style.left = lx + "px"; tgt.style.top = (y - 18) + "px";
+      reg.style.left = Math.max(16, x - 300) + "px"; reg.style.top = Math.max(96, y - 170) + "px";
+    };
+    const W0 = () => cv.clientWidth, H0 = () => cv.clientHeight;
+    ret.style.width = ret.style.height = Math.min(360, W0() * .6) + "px"; ret.classList.remove("lock");
+    place(W0() * .5, H0() * .5);
+    const dur = 4700, t0 = performance.now(), h = hashStr(f.key);
+    const ox = ((h % 160) - 80), oy = (((h >>> 8) % 120) - 60);
+    const frame = t => {
+      const k = Math.min(1, (t - t0) / dur), e = k < .5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
+      const { W, H, dpr } = fitCanvas(cv, 1.25);
+      const blur = Math.sin(Math.PI * Math.min(1, k * 1.15)) * 5 * dpr;
+      Terrain.draw(ctx, W, H, layers, e * 1.82, .55 - e * .95, ox * dpr * (1 - e), oy * dpr * (1 - e), blur);
+      if (k < 1) raf = requestAnimationFrame(frame);
+    };
+    raf = requestAnimationFrame(frame);
+    feeds(); feedT = setInterval(feeds, 140);
+    T(700, () => { labelStack(tgt, [["Tracking...", "s blink"], ...f.lines.map(l => [l])]); place(W0() * .5, H0() * .5); });
+    T(900, () => type($("#introSub"), "Command", (S.settings.bulletin || "All units, stand by. Operations database is online.").split("\n")[0], 22));
+    T(2600, () => labelStack(reg, [[f.aoLabel + " // " + gridRef(f.key)]]));
+    T(3900, () => {
+      ret.classList.add("lock"); ret.style.width = ret.style.height = Math.min(220, W0() * .45) + "px";
+      labelStack(tgt, [["Located", "s"], ...f.lines.map(l => [l])]); place(W0() * .5, H0() * .5);
+    });
+    T(6300, finish);
+  }
+  function finish() {
+    if (!running) return;
+    running = false; timers.forEach(clearTimeout); timers = []; cancelAnimationFrame(raf); clearInterval(feedT);
+    box.classList.add("fade");
+    setTimeout(() => { box.hidden = true; box.className = "intro"; $("#introSub").textContent = ""; heroMap.active(location.hash.slice(1) === "command" || !location.hash); }, 620);
+    document.removeEventListener("keydown", onKey);
+  }
+  const onKey = e => { if (e.key === "Escape" || e.key === "Enter" || e.key === " ") { e.preventDefault(); finish(); } };
+  function play(ready) {
+    if (running) return; running = true; mark();
+    heroMap.active(false);
+    box.className = "intro"; box.hidden = false; void box.offsetWidth; box.classList.add("play");
+    names(); if (ready) ready.then(names);
+    document.addEventListener("keydown", onKey);
+    const layersP = Terrain.layers();
+    T(3500, () => box.classList.add("out"));
+    T(3950, async () => { const L = await layersP; if (!running) return; if (ready) await Promise.race([ready, new Promise(r => setTimeout(r, 800))]); names(); hud(L); });
+  }
+  $("#introSkip").addEventListener("click", finish);
+  $("#replayIntro").addEventListener("click", () => { window.scrollTo(0, 0); play(null); });
+  return {
+    running: () => running,
+    shouldPlay() { return !reduce && !seen(); },
+    auto(ready) { if (this.shouldPlay()) play(ready); }
   };
-  box.addEventListener("click", () => { i = lines.length; box.classList.add("done"); setTimeout(() => box.remove(), 450); });
-  step();
-}
+})();
 
 /* ─── start ────────────────────────────────────────────────────────── */
 (async () => {
-  boot();
   $("#demoBanner").hidden = LIVE;
-  if (!LIVE) { S.session = { user: { email: "demo@opsnet" } }; S.admin = true; }
-  else { try { S.session = await api.session(); if (S.session) S.admin = await api.isAdmin(S.session.user.id); } catch {} }
-  route(); await reload(); fillSettings(); resetOp(); resetP(); resetF();
+  if (intro.shouldPlay()) Terrain.hold(2300);
+  const ready = (async () => {
+    if (!LIVE) { S.session = { user: { email: "demo@opsnet" } }; S.admin = true; }
+    else { try { S.session = await api.session(); if (S.session) S.admin = await api.isAdmin(S.session.user.id); } catch {} }
+    route(); await reload(); fillSettings(); resetOp(); resetP(); resetF();
+  })();
+  intro.auto(ready);
 })();
 })();
