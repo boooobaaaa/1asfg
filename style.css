@@ -312,6 +312,11 @@ label .field{letter-spacing:0;text-transform:none;font-size:15px}
 .mrow.indent{padding-left:28px}
 .pform{display:flex;flex-direction:column;gap:12px}
 select.field:disabled,input.field:disabled{opacity:.45}
+/* native dropdown lists: force readable colors on every OS */
+select.field{text-shadow:none;background-color:var(--bg-2);color:var(--fg)}
+select.field option,select.field optgroup{background-color:#0a160c;color:#c8ffd3;text-shadow:none}
+select.field option:disabled{color:#5fa66f}
+.fm-note{border:1px dashed var(--amber);color:var(--amber);padding:10px 12px;font-size:13px;margin:0}
 
 @media (prefers-reduced-motion:reduce){
   .fx .crt::before,.fx .crt::after,.ticker-track,.cursor::after,.defcon span.on.hot{animation:none}

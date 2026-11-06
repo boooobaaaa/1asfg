@@ -80,7 +80,7 @@ const S = {
   units: [], formations: [], settings: { bulletin: "", directive: "", defcon: 4, ticker: [], points: { training: 1, practice: 2, raid: 3 } },
   personnel: [], ops: [], unit: store.get("unit", null),
   opType: "all", period: "month", lbDet: "all", lbSort: { k: "points", dir: -1 },
-  session: null, admin: false, editOp: null, editP: null, editF: null
+  session: null, admin: false, editOp: null, editP: null, editF: null, missing: {}
 };
 const pts = () => Object.assign({ training: 1, practice: 2, raid: 3 }, S.settings.points || {});
 const unitOps = () => S.ops.filter(o => o.unit === S.unit);
@@ -109,7 +109,7 @@ function liveApi() {
     const out = []; const step = 1000;
     for (let from = 0; ; from += step) {
       const { data, error } = await sb.from(table).select("*").range(from, from + step - 1);
-      if (error) { if (optional) return []; throw error; }
+      if (error) { if (optional) { console.warn(table, error); S.missing[table] = error.message || "unreadable"; return []; } throw error; }
       out.push(...data); if (data.length < step) break;
     }
     return out;
@@ -117,6 +117,7 @@ function liveApi() {
   const chk = ({ error }) => { if (error) throw error; };
   return {
     async load() {
+      S.missing = {};
       const [units, formations, settings, personnel, ops, att] = await Promise.all([
         all("units"), all("formations", true), sb.from("settings").select("*").eq("id", 1).maybeSingle(), all("personnel"), all("operations"), all("attendance")
       ]);
@@ -223,7 +224,7 @@ async function reload() {
     if (!S.units.some(u => u.id === S.unit)) S.unit = S.units[0] ? S.units[0].id : null;
     $("#link").textContent = LIVE ? "SECURE" : "DEMO";
     if (LIVE) $("#demoBanner").hidden = true;
-    if (LIVE && !S.formations.length && S.admin) { const b = $("#demoBanner"); b.hidden = false; b.textContent = "No detachments found. Run supabase/update-orbat.sql in the Supabase SQL Editor."; }
+    if (LIVE && !S.formations.length && S.admin) { const b = $("#demoBanner"); b.hidden = false; b.textContent = (S.missing.formations ? "Structure table missing: " : "No detachments found: ") + "run supabase/update-orbat.sql in Supabase → SQL Editor, then refresh."; }
   } catch (e) {
     console.error(e); $("#link").textContent = "LOST";
     const msg = (e && (e.message || e.error_description || e.hint)) || String(e);
@@ -445,7 +446,11 @@ function renderAdmin() {
   options($("#pDet"), [["", "— None —"], ...dets().map(d => [d.id, d.id + " — " + d.name])]);
   syncCoyOptions();
   options($("#pqDet"), [["all", "All"], ...dets().map(d => [d.id, d.id]), ["hq", "HQ Element"], ["none", "Unassigned"]]);
-  options($("#fmParent"), [["", "—"], ...dets().map(d => [d.id, d.id + " — " + d.name])]);
+  options($("#fmParent"), dets().length ? [["", "— Pick a detachment —"], ...dets().map(d => [d.id, d.id + " — " + d.name])] : [["", "No detachments yet: add one first"]]);
+  const note = $("#fmNote");
+  if (S.missing.formations) { note.hidden = false; note.textContent = "The structure table isn't set up in the database yet (" + S.missing.formations + "). Run supabase/update-orbat.sql in Supabase → SQL Editor, then refresh this page."; }
+  else if (!dets().length) { note.hidden = false; note.textContent = "No detachments on file. Run supabase/update-orbat.sql to load Fierce Tiger and White Horse with their companies, or add a detachment below (set Type to Detachment)."; }
+  else note.hidden = true;
   $("#userList").replaceChildren(...S.personnel.map(p => el("option", { value: p.username })));
   // ops list
   const mq = lc($("#mq").value);
