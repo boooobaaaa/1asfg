@@ -623,6 +623,44 @@ window.addEventListener("hashchange", () => { route(); window.scrollTo(0, 0); })
 
 function renderAll() { renderChrome(); renderCommand(); renderOps(); renderLB(); renderRoster(); renderAdmin(); }
 
+/* ─── East Asia / Korean peninsula outline (lon, lat pairs; hand-traced, simplified) ─ */
+const GEO = (() => {
+  const P = a => { const o = []; for (let i = 0; i < a.length; i += 2) o.push([a[i], a[i + 1]]); return o; };
+  const koreaCoast = P([124.30,39.85, 124.62,39.62, 124.98,39.58, 125.30,39.52, 125.55,39.36, 125.45,39.12, 125.28,38.92, 125.18,38.72, 124.98,38.58, 124.85,38.38, 124.70,38.12, 124.88,37.98, 125.12,37.88, 125.30,37.72, 125.55,37.80, 125.78,37.92, 126.02,37.80, 126.25,37.78, 126.42,37.80, 126.52,37.70, 126.58,37.58, 126.60,37.45, 126.70,37.32, 126.78,37.12, 126.92,36.96, 126.75,36.92, 126.50,36.98, 126.28,36.92, 126.12,36.80, 126.18,36.62, 126.42,36.48, 126.52,36.28, 126.58,36.12, 126.70,35.98, 126.55,35.82, 126.45,35.62, 126.42,35.40, 126.30,35.18, 126.40,35.00, 126.32,34.82, 126.25,34.62, 126.40,34.40, 126.55,34.30, 126.80,34.42, 127.05,34.52, 127.30,34.48, 127.48,34.65, 127.70,34.72, 127.90,34.88, 128.10,34.88, 128.35,34.84, 128.55,34.92, 128.72,35.02, 128.90,35.08, 129.05,35.08, 129.18,35.18, 129.32,35.36, 129.42,35.58, 129.52,35.88, 129.57,36.06, 129.42,36.10, 129.38,36.40, 129.45,36.80, 129.38,37.05, 129.25,37.32, 129.10,37.55, 128.92,37.78, 128.72,38.00, 128.58,38.22, 128.40,38.52, 128.20,38.80, 127.95,39.05, 127.62,39.15, 127.42,39.30, 127.50,39.55, 127.62,39.78, 127.90,39.88, 128.20,40.02, 128.55,40.22, 128.90,40.42, 129.20,40.62, 129.62,40.82, 129.72,41.10, 129.70,41.40, 129.82,41.75, 130.05,41.98, 130.40,42.22, 130.69,42.29]);
+  const nkBorder = P([130.69,42.29, 130.45,42.55, 130.25,42.88, 129.90,42.98, 129.60,42.45, 129.30,42.42, 128.95,42.05, 128.06,42.00, 127.60,41.60, 127.15,41.50, 126.90,41.75, 126.55,41.35, 126.10,40.95, 125.60,40.75, 125.15,40.50, 124.70,40.25, 124.35,40.05, 124.30,39.85]);
+  const dmz = P([126.68,37.77, 126.95,37.92, 127.10,38.12, 127.40,38.30, 127.75,38.32, 128.05,38.30, 128.25,38.45, 128.37,38.61]);
+  const chinaCoast = P([124.30,39.85, 123.70,39.80, 123.10,39.62, 122.45,39.35, 121.95,38.98, 121.55,38.82, 121.20,38.78, 121.15,38.95, 121.55,39.30, 121.75,39.60, 122.15,40.20, 122.25,40.55, 121.90,40.85, 121.30,40.90, 120.70,40.50, 120.10,40.05, 119.55,39.85, 119.05,39.25, 118.40,39.10, 117.75,38.95, 117.65,38.55, 118.05,38.15, 118.90,37.95, 119.15,37.40, 119.75,37.15, 120.30,37.55, 120.80,37.75, 121.45,37.55, 122.15,37.45, 122.60,37.35, 122.45,36.95, 121.85,36.85, 121.05,36.55, 120.55,36.15, 120.15,35.90, 119.55,35.45, 119.25,34.85, 119.80,34.45, 120.30,34.15, 120.75,33.20, 121.15,32.55, 121.70,32.05, 121.90,31.70, 121.85,31.05, 121.40,30.75, 121.95,30.15, 121.80,29.40, 121.55,28.70, 121.05,28.10, 120.60,27.40, 120.10,26.75, 119.65,26.00, 119.30,25.40, 118.75,24.70, 118.10,24.45, 117.40,23.80, 116.70,23.25, 115.80,22.85, 114.80,22.65, 114.20,22.30, 113.50,22.20, 113.00,21.85, 112.00,21.75, 110.60,21.20]);
+  const russiaCoast = P([130.69,42.29, 130.90,42.55, 131.25,42.70, 131.55,43.05, 131.90,43.05, 132.30,42.85, 132.85,42.80, 133.50,42.75, 134.10,43.05, 134.80,43.40, 135.50,43.95, 136.20,44.50, 136.90,45.10, 137.70,45.90, 138.30,46.60, 138.70,47.30, 139.40,48.00, 140.20,48.60, 140.45,49.40, 140.55,50.30, 140.90,51.40, 141.30,52.30]);
+  const ring = (cx, cy, rx, ry, n = 18, rot = 0) => Array.from({ length: n }, (_, i) => { const a = i / n * Math.PI * 2; const x = Math.cos(a) * rx, y = Math.sin(a) * ry; return [cx + x * Math.cos(rot) - y * Math.sin(rot), cy + x * Math.sin(rot) + y * Math.cos(rot)]; });
+  const islands = [
+    P([129.70,33.20, 129.60,33.60, 130.40,33.95, 130.95,33.95, 131.70,33.50, 131.90,32.80, 131.40,31.40, 130.80,31.00, 130.20,31.20, 130.30,31.90, 130.10,32.60, 129.80,32.70]), // Kyushu
+    P([132.00,33.00, 132.60,33.90, 133.50,34.30, 134.60,34.20, 134.70,33.80, 134.20,33.25, 133.00,32.75]), // Shikoku
+    P([130.90,34.00, 131.40,34.40, 132.20,35.00, 133.00,35.50, 134.00,35.55, 135.20,35.75, 136.00,35.90, 136.70,36.90, 137.30,36.75, 138.20,37.00, 139.00,37.90, 139.60,38.60, 140.00,39.60, 140.00,40.40, 140.30,41.25, 141.20,41.20, 141.50,40.60, 142.00,39.60, 141.60,38.40, 141.00,38.20, 140.90,37.00, 140.60,36.30, 140.80,35.70, 140.40,35.20, 139.80,35.00, 139.60,35.30, 139.10,35.20, 138.80,34.65, 138.20,34.60, 137.00,34.60, 136.80,34.30, 136.00,33.50, 135.30,33.70, 135.10,34.30, 134.30,34.70, 133.00,34.35, 132.10,33.95, 131.60,34.00]), // Honshu
+    P([140.00,41.50, 140.10,42.60, 140.50,43.20, 141.40,43.30, 141.70,44.30, 141.90,45.50, 142.90,44.70, 144.30,44.00, 145.30,43.40, 145.60,43.30, 144.90,42.90, 143.30,42.00, 141.60,42.50, 140.90,41.80]), // Hokkaido
+    P([141.70,46.00, 142.00,47.50, 142.00,49.00, 142.20,50.50, 142.80,51.30, 143.20,49.30, 143.00,47.60, 142.50,46.60, 142.10,46.00]), // Sakhalin
+    P([120.10,23.00, 120.70,22.00, 121.00,22.20, 121.60,23.50, 121.90,25.00, 121.50,25.30, 120.70,24.60]), // Taiwan
+    P([129.20,34.10, 129.48,34.30, 129.45,34.70, 129.25,34.60, 129.18,34.30]), // Tsushima
+    ring(126.55, 33.38, .38, .16, 20, .08),  // Jeju
+    ring(130.87, 37.50, .045, .04, 10),      // Ulleungdo
+    ring(126.45, 37.70, .08, .07, 12),       // Ganghwa
+    ring(126.50, 37.47, .06, .045, 12),      // Yeongjong
+    ring(128.62, 34.86, .1, .09, 12),        // Geoje
+    ring(126.15, 36.95, .05, .03, 10)        // Taean offshore
+  ];
+  function inside(pt, poly) { let c = false; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) { const [xi, yi] = poly[i], [xj, yj] = poly[j]; if ((yi > pt[1]) !== (yj > pt[1]) && pt[0] < (xj - xi) * (pt[1] - yi) / (yj - yi) + xi) c = !c; } return c; }
+  // scatter the island-dense southwest and west coasts
+  const korea = koreaCoast.concat(nkBorder.slice(1));
+  { let s = 7; const r = () => (s = (s * 16807) % 2147483647) / 2147483647;
+    const boxes = [[125.9, 34.0, 127.9, 34.75, 140], [125.95, 34.7, 126.45, 36.5, 60], [126.2, 37.0, 126.6, 37.6, 18], [127.7, 34.55, 128.8, 34.95, 40]];
+    for (const [x0, y0, x1, y1, n] of boxes) for (let k = 0; k < n; k++) {
+      const p = [x0 + r() * (x1 - x0), y0 + r() * (y1 - y0)]; if (inside(p, korea)) continue;
+      const rr = .008 + Math.pow(r(), 3) * .07; islands.push(ring(p[0], p[1], rr * (1 + r() * .8), rr, 8, r() * 3));
+    } }
+  const han = P([127.42,37.52, 127.30,37.53, 127.18,37.57, 127.10,37.54, 127.02,37.52, 126.98,37.515, 126.93,37.53, 126.88,37.55, 126.82,37.58, 126.76,37.63, 126.70,37.68, 126.62,37.74, 126.52,37.76]);
+  return { center: [126.978, 37.566], han, koreaCoast, nkBorder, dmz, chinaCoast, russiaCoast, islands,
+    mainlandClose: P([100, 21, 100, 58, 145, 58]) };
+})();
+
 /* ─── terrain generator (procedural "satellite" imagery) ───────────── */
 const Terrain = (() => {
   const SIZE = 760;
@@ -655,8 +693,8 @@ const Terrain = (() => {
       const e = fbm(n1, u, v, 6), ridge = 1 - Math.abs(fbm(n2, u * 1.9, v * 1.9, 5) * 2 - 1);
       const fine = n4(u * 22, v * 22) - .5;
       let h = e * .75 + ridge * ridge * .35 + fine * .015, a;
-      if (kind === "region") {
-        if (e < .44) { Wt[i] = 1; a = 30 + fbm(n3, u * 5, v * 5, 2) * 14; h = .44; }
+      if (kind === "region" || kind === "land") {
+        if (kind === "region" && e < .44) { Wt[i] = 1; a = 30 + fbm(n3, u * 5, v * 5, 2) * 14; h = .44; }
         else a = 118 + (e - .44) * 150 + fine * 18 + (e < .452 ? 30 : 0);
       } else {
         a = 128 + (fbm(n3, u * 3, v * 3, 3) - .5) * 40 + fine * 22;
@@ -700,14 +738,71 @@ const Terrain = (() => {
     }
     return c;
   }
+  function geoLayer(span, tex, n) {
+    const c = document.createElement("canvas"); c.width = c.height = SIZE; const g = c.getContext("2d");
+    const [c0, c1] = GEO.center, k = Math.cos(c1 * Math.PI / 180), nz = noise(4242 + n);
+    const pr = ([lon, lat]) => [SIZE / 2 + (lon - c0) * k / span * SIZE, SIZE / 2 - (lat - c1) / span * SIZE];
+    function rough(pts, closed) {
+      const P0 = pts.map(pr); if (closed) P0.push(P0[0]);
+      let xs = Infinity, xe = -Infinity, ys = Infinity, ye = -Infinity; for (const [x, y] of P0) { xs = Math.min(xs, x); xe = Math.max(xe, x); ys = Math.min(ys, y); ye = Math.max(ye, y); }
+      const rad = Math.max(xe - xs, ye - ys) / 2;
+      if (closed && rad < .7) return null;
+      const amp = closed ? Math.min(3.2, rad * .3) : 3.2, out = []; let s = 0, total = 0;
+      for (let i = 1; i < P0.length; i++) total += Math.hypot(P0[i][0] - P0[i - 1][0], P0[i][1] - P0[i - 1][1]);
+      for (let i = 1; i < P0.length; i++) {
+        const [ax, ay] = P0[i - 1], [bx, by] = P0[i], L = Math.hypot(bx - ax, by - ay), m = Math.max(1, Math.ceil(L / 2.5)), nx = -(by - ay) / (L || 1), ny = (bx - ax) / (L || 1);
+        for (let q = 0; q < m; q++) {
+          const t = q / m, x = ax + (bx - ax) * t, y = ay + (by - ay) * t, ss = s + L * t;
+          const w = closed ? 1 : Math.min(1, ss / 24, (total - ss) / 24);
+          const o = (fbm(nz, ss / 16, n * 7.3 + i * .01, 3) - .5) * 2 * amp * w;
+          out.push([x + nx * o, y + ny * o]);
+        }
+        s += L;
+      }
+      if (!closed) out.push(P0[P0.length - 1]);
+      return out;
+    }
+    const kc = rough(GEO.koreaCoast, false), cc = rough(GEO.chinaCoast, false), rc = rough(GEO.russiaCoast, false);
+    const isl = GEO.islands.map(r => rough(r, true)).filter(Boolean);
+    const border = GEO.nkBorder.slice(1).map(pr), close = GEO.mainlandClose.map(pr);
+    const land = new Path2D(), poly = pts => { pts.forEach(([x, y], i) => (i ? land.lineTo(x, y) : land.moveTo(x, y))); land.closePath(); };
+    poly(kc.concat(border)); poly(cc.concat(close, rc.slice().reverse(), border)); isl.forEach(poly);
+    // water
+    g.fillStyle = "#1b1a16"; g.fillRect(0, 0, SIZE, SIZE);
+    g.globalAlpha = .1; g.drawImage(tex, 0, 0, SIZE, SIZE); g.globalAlpha = 1;
+    // shoreline glow
+    g.save(); g.shadowColor = "rgba(214,204,176,.4)"; g.shadowBlur = 16; g.fillStyle = "#3b382f"; g.fill(land); g.restore();
+    // land texture
+    g.save(); g.clip(land); g.translate(SIZE / 2, SIZE / 2); g.rotate(n * Math.PI / 2); g.drawImage(tex, -SIZE / 2, -SIZE / 2, SIZE, SIZE); g.restore();
+    // graticule
+    const step = span > 20 ? 5 : span > 5 ? 2 : .5;
+    g.strokeStyle = "rgba(236,232,221,.09)"; g.lineWidth = 1; g.fillStyle = "rgba(236,232,221,.4)"; g.font = Math.round(SIZE / 52) + "px 'Share Tech Mono', monospace";
+    const lonSpan = span / k / 2, latSpan = span / 2;
+    for (let lon = Math.ceil((c0 - lonSpan) / step) * step; lon <= c0 + lonSpan; lon += step) { const [x] = pr([lon, c1]); g.beginPath(); g.moveTo(x, 0); g.lineTo(x, SIZE); g.stroke(); g.fillText((+lon.toFixed(1)) + "°E", x + 4, SIZE * .06); }
+    for (let lat = Math.ceil((c1 - latSpan) / step) * step; lat <= c1 + latSpan; lat += step) { const [, y] = pr([c0, lat]); g.beginPath(); g.moveTo(0, y); g.lineTo(SIZE, y); g.stroke(); g.fillText((+lat.toFixed(1)) + "°N", SIZE * .03, y - 4); }
+    // coastlines
+    g.strokeStyle = "rgba(236,230,210,.6)"; g.lineWidth = 1.2; g.lineJoin = "round";
+    const line = pts => { g.beginPath(); pts.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.stroke(); };
+    [kc, cc, rc].forEach(line); isl.forEach(r => line(r.concat([r[0]])));
+    // Han River through Seoul (about 1 km wide)
+    const kmPx = span * 111 / SIZE;
+    if (kmPx < 1) { g.setLineDash([]); g.strokeStyle = "rgba(236,230,210,.45)"; g.lineWidth = 1.2 / kmPx + 1.6; line(GEO.han.map(pr)); g.strokeStyle = "#24221d"; g.lineWidth = 1.2 / kmPx; line(GEO.han.map(pr)); }
+    // borders: China–DPRK, and the DMZ in gold
+    g.setLineDash([5, 4]); g.strokeStyle = "rgba(236,232,221,.4)"; g.lineWidth = 1.1; line(GEO.nkBorder.map(pr));
+    g.setLineDash([7, 4]); g.strokeStyle = "rgba(214,176,86,.95)"; g.lineWidth = 1.8; line(GEO.dmz.map(pr)); g.setLineDash([]);
+    return c;
+  }
   const wait = ms => new Promise(res => setTimeout(res, ms));
   return {
     hold(ms) { holdMs = ms; },
     layers() {
       if (!promise) promise = (async () => {
         if (holdMs) await wait(holdMs);
-        const seed = 1983, out = [];
-        for (const k of ["region", "valley", "fields"]) { await wait(16); out.push(layer(k, seed + out.length * 101)); }
+        const seed = 1983; await wait(16);
+        const tex = layer("land", seed); await wait(16);
+        const out = [30, 10, 10 / 3].map((span, n) => geoLayer(span, tex, n)); await wait(16);
+        out.push(layer("valley", seed + 101)); await wait(16);
+        out.push(layer("fields", seed + 202));
         return out;
       })();
       return promise;
@@ -768,7 +863,7 @@ const heroMap = (() => {
     if (!layers) return;
     const { W, H, dpr } = fitCanvas(cv);
     pan.x += (pan.tx - pan.x) * .03; pan.y += (pan.ty - pan.y) * .03;
-    const p = 1.52 + Math.sin(t / 9000) * .07, rot = -.42 + Math.sin(t / 14000) * .03;
+    const p = 3.52 + Math.sin(t / 9000) * .07, rot = -.42 + Math.sin(t / 14000) * .03;
     Terrain.draw(ctx, W, H, layers, p, rot, pan.x * dpr, pan.y * dpr, 0);
     if (on && !reduce && !document.hidden) raf = requestAnimationFrame(frame);
   }
@@ -798,6 +893,13 @@ function renderFeeds(ops) {
 const EMBLEM = CFG.EMBLEM || "assets/emblem.png";
 {
   $$(".em, .em-small").forEach(i => { i.src = EMBLEM; });
+  // stacked layers give the intro badge real thickness when it spins
+  const stack = $("#em3d"), N = 18, T = 16;
+  for (let i = 0; i < N; i++) {
+    const z = T / 2 - (i / (N - 1)) * T, front = i === 0, back = i === N - 1;
+    stack.append(el("img", { src: EMBLEM, alt: "", class: "em-layer" + (front ? " em-front" : back ? " em-back" : ""),
+      style: back ? "transform:rotateY(180deg) translateZ(" + (T / 2) + "px)" : "transform:translateZ(" + z.toFixed(2) + "px)" + (front ? "" : ";filter:brightness(" + (.28 + .22 * Math.sin(i / N * Math.PI)).toFixed(2) + ") saturate(.55)") }));
+  }
   $("#intro").style.setProperty("--em-mask", "url(\"" + EMBLEM + "\")");
   const small = el("img", { src: EMBLEM, alt: "" }); small.onerror = () => { small.remove(); drawMark(); }; $("#identMark").append(small);
 }
@@ -860,7 +962,7 @@ const intro = (() => {
     box.classList.add("hud");
     const cv = $("#introMap"), ctx = cv.getContext("2d"), ret = $("#introReticle"), tgt = $("#introTarget"), reg = $("#introRegion");
     const f = featured();
-    labelStack(reg, [[f.region]]); tgt.replaceChildren();
+    tgt.replaceChildren();
     const place = (x, y) => {
       ret.style.left = x + "px"; ret.style.top = y + "px";
       const W = cv.clientWidth, lw = tgt.offsetWidth || 300; let lx = x + 40; if (lx + lw > W - 16) lx = Math.max(16, x - lw - 40);
@@ -870,25 +972,28 @@ const intro = (() => {
     const W0 = () => cv.clientWidth, H0 = () => cv.clientHeight;
     ret.style.width = ret.style.height = Math.min(360, W0() * .6) + "px"; ret.classList.remove("lock");
     place(W0() * .5, H0() * .5);
-    const dur = 4700, t0 = performance.now(), h = hashStr(f.key);
-    const ox = ((h % 160) - 80), oy = (((h >>> 8) % 120) - 60);
+    const dur = 6000, t0 = performance.now(), h = hashStr(f.key);
+    const stages = [[0, "East Asia"], [.75, "Republic of Korea"], [1.7, "Seoul // Gyeonggi-do"], [2.75, null]]; let stage = -1;
+    const ox = 0, oy = 0;
     const frame = t => {
       const k = Math.min(1, (t - t0) / dur), e = k < .5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
       const { W, H, dpr } = fitCanvas(cv, 1.25);
       const blur = Math.sin(Math.PI * Math.min(1, k * 1.15)) * 5 * dpr;
-      Terrain.draw(ctx, W, H, layers, e * 1.82, .55 - e * .95, ox * dpr * (1 - e), oy * dpr * (1 - e), blur);
+      const p = e * 3.8;
+      Terrain.draw(ctx, W, H, layers, p, Math.max(0, p - 2) * -.2, ox * dpr * Math.max(0, 1 - p / 2.4), oy * dpr * Math.max(0, 1 - p / 2.4), p < 2.2 ? blur * .35 : blur);
+      let s = 0; while (s + 1 < stages.length && p >= stages[s + 1][0]) s++;
+      if (s !== stage) { stage = s; labelStack(reg, [[stages[s][1] || (f.aoLabel + " // " + gridRef(f.key))]]); }
       if (k < 1) raf = requestAnimationFrame(frame);
     };
     raf = requestAnimationFrame(frame);
     feeds(); feedT = setInterval(feeds, 140);
     T(700, () => { labelStack(tgt, [["Tracking...", "s blink"], ...f.lines.map(l => [l])]); place(W0() * .5, H0() * .5); });
     T(900, () => type($("#introSub"), "Command", (S.settings.bulletin || "All units, stand by. Operations database is online.").split("\n")[0], 22));
-    T(2600, () => labelStack(reg, [[f.aoLabel + " // " + gridRef(f.key)]]));
-    T(3900, () => {
+    T(5200, () => {
       ret.classList.add("lock"); ret.style.width = ret.style.height = Math.min(220, W0() * .45) + "px";
       labelStack(tgt, [["Located", "s"], ...f.lines.map(l => [l])]); place(W0() * .5, H0() * .5);
     });
-    T(6300, finish);
+    T(7700, finish);
   }
   function finish() {
     if (!running) return;

@@ -83,7 +83,11 @@ body{background:
 .intro-mesh{position:absolute;inset:0;background:radial-gradient(circle,rgba(220,215,202,.07) 1px,transparent 1.6px) 0 0/6px 6px;
   -webkit-mask:radial-gradient(ellipse at 50% 45%,#000 0%,rgba(0,0,0,.6) 30%,transparent 62%);mask:radial-gradient(ellipse at 50% 45%,#000 0%,rgba(0,0,0,.6) 30%,transparent 62%)}
 .intro-emblem{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:16px}
-.em-stage{position:relative;width:min(240px,46vw);aspect-ratio:400/485;perspective:900px;max-width:100%}
+.em-stage{position:relative;width:min(240px,46vw);aspect-ratio:400/485;max-width:100%}
+.em-spin{position:absolute;inset:0;perspective:1100px;opacity:0}
+.em3d{position:absolute;inset:0;transform-style:preserve-3d}
+.em-layer{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;backface-visibility:visible}
+.em-back{filter:brightness(.32) saturate(.4)}
 .em{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;opacity:0}
 .em-shine{position:absolute;inset:0;pointer-events:none;opacity:0;
   -webkit-mask:var(--em-mask) center/contain no-repeat;mask:var(--em-mask) center/contain no-repeat;
@@ -92,7 +96,9 @@ body{background:
 .em-tag{overflow:hidden;opacity:0}
 .em-tag span{display:block;background:var(--gold);color:#17130a;font-family:var(--f-cjk);font-weight:900;font-size:clamp(14px,2vw,19px);letter-spacing:.2em;padding:2px 14px 2px 18px;transform:translateX(-102%)}
 
-.intro.play .em-main{animation:emIn 2.4s cubic-bezier(.25,.8,.25,1) .1s forwards}
+.intro.play .em-spin{animation:fadeIn .5s ease-out .1s forwards}
+.intro.play .em3d{animation:emSpin 2.9s cubic-bezier(.12,.72,.22,1) .1s forwards,emSway 4s ease-in-out 3s infinite alternate}
+.intro.play .em-front{animation:emFlash 2.4s ease-out .1s both}
 .intro.play .em-g1{animation:glitchA 1.5s steps(1) .1s forwards}
 .intro.play .em-g2{animation:glitchB 1.5s steps(1) .1s forwards}
 .intro.play .em-shine{animation:shine 1.1s ease-in-out 1.7s forwards}
@@ -100,13 +106,14 @@ body{background:
 .intro.play .em-tag{animation:fadeIn .01s linear 1.9s forwards}
 .intro.play .em-tag span{animation:wipe .45s cubic-bezier(.2,.8,.2,1) 1.9s forwards}
 .intro.out .intro-emblem{animation:emOut .55s ease-in forwards}
-@keyframes emIn{
-  0%{opacity:0;transform:rotateY(-95deg) scale(1.9);filter:brightness(4) blur(10px)}
-  12%{opacity:.5}
-  30%{opacity:1;transform:rotateY(38deg) scale(1.15);filter:brightness(1.8) blur(2px)}
-  48%{transform:rotateY(-14deg) scale(1.02);filter:brightness(1.2) blur(0)}
-  64%{transform:rotateY(5deg)}
-  78%,100%{opacity:1;transform:rotateY(0) scale(1);filter:none}}
+@keyframes emSpin{
+  0%{transform:rotateX(16deg) rotateY(-900deg) scale(.3)}
+  55%{transform:rotateX(6deg) rotateY(-40deg) scale(1.06)}
+  74%{transform:rotateX(0) rotateY(12deg) scale(1)}
+  88%{transform:rotateY(-4deg)}
+  100%{transform:rotateY(0) scale(1)}}
+@keyframes emSway{from{transform:rotateY(0)}to{transform:rotateY(-16deg) rotateX(3deg)}}
+@keyframes emFlash{0%{filter:brightness(3.5)}40%{filter:brightness(1.6)}100%{filter:none}}
 @keyframes glitchA{
   0%{opacity:0}8%{opacity:.8;clip-path:inset(10% 0 70% 0);transform:translateX(-14px)}
   16%{clip-path:inset(55% 0 20% 0);transform:translateX(18px)}24%{opacity:0}
@@ -160,7 +167,8 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
 .hud-top-in{display:flex;align-items:center;gap:10px 24px;flex-wrap:wrap;min-height:var(--top-h);padding-block:6px}
 .ident{display:flex;align-items:center;gap:12px;text-decoration:none;min-width:0;align-self:stretch}
 .ident-mark{width:50px;flex:0 0 50px;align-self:stretch;margin-top:-6px;margin-bottom:-18px;background:linear-gradient(#1f1e1a,#0e0e0c);clip-path:polygon(0 0,100% 0,100% 74%,50% 100%,0 74%);display:grid;place-items:center;padding:8px 7px 16px;border-top:1px solid var(--line-2)}
-.ident-mark img{width:100%;height:100%;object-fit:contain}
+.ident-mark img{width:100%;height:100%;object-fit:contain;transition:transform 1.4s cubic-bezier(.2,.8,.2,1)}
+.ident:hover .ident-mark img{transform:perspective(300px) rotateY(360deg)}
 .ident-mark canvas{width:100%}
 .ident-txt{display:flex;flex-direction:column;line-height:1.2;min-width:0}
 .ident-txt b{font-weight:600;font-size:16px;letter-spacing:.1em;text-transform:uppercase;white-space:nowrap}
@@ -450,4 +458,5 @@ body{padding-bottom:calc(var(--bot-h) + env(safe-area-inset-bottom,0px))}
 
 @media (prefers-reduced-motion:reduce){
   .fx .crt::after,.ticker-track,.reticle svg,.defcon span.on.hot,.map-label span.blink{animation:none}
+  .ident:hover .ident-mark img{transform:none}
 }
