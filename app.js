@@ -16,6 +16,7 @@ if (CFG.SUPABASE_URL) {
 const LIVE = !!(CFG.SUPABASE_URL && CFG.SUPABASE_ANON_KEY && window.supabase);
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const TICKER = ["第1空輸特戰團", "안 되면 되게 하라", "全 部隊 注意 · 作戰 記錄 更新 中", "許可된 人員만 接近", "+++ 電文 終了 +++"];
 const TYPES = { training: "Training", practice: "Practice raid", raid: "Raid" };
 const DEFCON_TXT = { 5: "Normal readiness. Routine training cycle.", 4: "Increased intelligence watch and strengthened security.", 3: "Elevated readiness. Expect short-notice operations.", 2: "High alert. Stand by for deployment orders.", 1: "Maximum readiness. All hands report immediately." };
 
@@ -113,8 +114,8 @@ function liveApi() {
 
 function demoApi() {
   const names = ["danielmax","rikilol999","AAACarl_114514","eliteboi126","DESMON_66","ujim106","khalid_cool17","Cheese_boi429","coupchap","DaniloW50","knightofkneon","Tactical_Sheperd","CaptainTrike","paranormal_caramel","Soul_Zephyrus","ironwake_07","SableFox22","northgate_kid"];
-  const ranks = ["SGT","CPL","LCPL","PFC","PVT","CAPT","1STLT","SSGT"];
-  const personnel = names.map((u, i) => ({ id: "p" + i, username: u, rank: ranks[i % ranks.length], unit: i % 4 === 3 ? "1AAB" : "ROCMC", joined: "2026-09-15", status: i === 17 ? "inactive" : "active" }));
+  const ranks = ["SGT","CPL","SSG","PFC","PVT","CPT","1LT","SFC"];
+  const personnel = names.map((u, i) => ({ id: "p" + i, username: u, rank: ranks[i % ranks.length], unit: "1ASFG", joined: "2026-09-15", status: i === 17 ? "inactive" : "active" }));
   const tpl = [["Training Operation","training"],["Money Farm","training"],["Beach Landing Drill","practice"],["Operation Strait Watch","raid"],["Night Patrol","training"],["Harbor Breach","practice"],["Operation Iron Tide","raid"],["Formation & Drill","training"]];
   const ops = []; let n = 0;
   for (let d = 2; d <= 48; d += 3) {
@@ -122,15 +123,14 @@ function demoApi() {
     const date = dt.toISOString().slice(0, 10); if (date > today()) continue;
     const pool = names.slice(0, 17); const cnt = 2 + ((n * 7) % 9);
     const att = pool.filter((_, i) => (i * 3 + n * 5) % 17 < cnt);
-    ops.push({ id: "o" + n, num: n + 1, unit: n % 4 === 2 ? "1AAB" : "ROCMC", type: t[1], name: t[0], date, host: att[0] || names[0],
+    ops.push({ id: "o" + n, num: n + 1, unit: "1ASFG", type: t[1], name: t[0], date, host: att[0] || names[0],
       summary: "Sample record for demo mode.", proof_url: n % 2 ? "https://example.com/proof" : null, attendees: att });
     n++;
   }
   const db = {
-    units: [{ id: "ROCMC", name: "Republic of China Marine Corps", name_local: "中華民國海軍陸戰隊", tagline: "Official Cold War faction", sort: 1 },
-            { id: "1AAB", name: "1st Amphibious Assault Battalion", name_local: "第一兩棲突擊營", tagline: "Amphibious assault element", sort: 2 }],
+    units: [{ id: "1ASFG", name: "1st Airborne Special Forces Group", name_local: "第1空輸特戰團", tagline: "공수 특전 · Official Cold War faction", sort: 1 }],
     settings: { bulletin: "ALL UNITS: OPSNET IS ONLINE.\nPRIORITY RAID SCHEDULED THIS WEEKEND. CHECK DISCORD FOR TIMING.", directive: "Report to the staging area 10 minutes before every hosted event. Hosts log attendance at roll call.", defcon: 3,
-      ticker: ["保衛台海", "永遠忠誠", "全體單位注意 · 活動紀錄更新中", "僅限授權人員", "+++ 電文結束 +++"], points: { training: 1, practice: 2, raid: 3 } },
+      ticker: TICKER, points: { training: 1, practice: 2, raid: 3 } },
     personnel, ops
   };
   let seq = 1000; const clone = x => JSON.parse(JSON.stringify(x));
@@ -444,10 +444,13 @@ const radar = (() => {
 })();
 
 /* ─── emblem, clock, FX, boot ──────────────────────────────────────── */
-if (CFG.EMBLEM) {
-  const img = $("#emblem"); img.src = CFG.EMBLEM; img.hidden = false; img.onerror = () => (img.hidden = true);
-  $("#identMark").append(el("img", { src: CFG.EMBLEM, alt: "" }));
-} else {
+// Emblem: config.js EMBLEM if set, otherwise assets/emblem.png; falls back to a drawn radar mark if the image is missing.
+const EMBLEM = CFG.EMBLEM || "assets/emblem.png";
+{
+  const big = $("#emblem"); big.onerror = () => (big.hidden = true); big.onload = () => (big.hidden = false); big.src = EMBLEM;
+  const small = el("img", { src: EMBLEM, alt: "" }); small.onerror = () => { small.remove(); drawMark(); }; $("#identMark").append(small);
+}
+function drawMark() {
   const m = el("canvas", { width: 76, height: 76 }); $("#identMark").append(m);
   const g = m.getContext("2d"); g.strokeStyle = "#9dffb0"; g.lineWidth = 2;
   [30, 20, 10].forEach(r => { g.beginPath(); g.arc(38, 38, r, 0, 7); g.stroke(); });

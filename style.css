@@ -18,7 +18,7 @@
   --glow-a:0 0 2px rgba(230,211,90,.9),0 0 12px rgba(230,211,90,.35);
   --f-crt:"VT323","Share Tech Mono",ui-monospace,monospace;
   --f-mono:"Share Tech Mono",ui-monospace,Menlo,Consolas,monospace;
-  --f-cjk:"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;
+  --f-cjk:"Noto Sans KR","Noto Sans TC","Apple SD Gothic Neo","Malgun Gothic","PingFang TC",sans-serif;
   color-scheme:dark;
 }
 *{box-sizing:border-box}
@@ -63,8 +63,9 @@ code{color:var(--amber)}
 .bar{position:sticky;top:0;z-index:20;background:rgba(5,10,6,.94);border-bottom:1px solid var(--line-2);backdrop-filter:blur(2px);padding-top:env(safe-area-inset-top,0px)}
 .bar-in{display:flex;align-items:center;gap:14px 20px;flex-wrap:wrap;padding-block:10px}
 .ident{display:flex;align-items:center;gap:10px;text-decoration:none;min-width:0}
-.ident-mark{width:38px;height:38px;flex:0 0 38px;border:1px solid var(--line-2);display:grid;place-items:center;overflow:hidden}
-.ident-mark img{width:100%;height:100%;object-fit:contain}
+.ident-mark{width:38px;height:44px;flex:0 0 38px;display:grid;place-items:center;overflow:hidden}
+.ident-mark img{width:100%;height:100%;object-fit:contain;filter:drop-shadow(0 0 4px rgba(80,255,120,.35))}
+.ident-mark canvas{border:1px solid var(--line-2)}
 .ident-mark canvas{width:100%;height:100%}
 .ident-txt{display:flex;flex-direction:column;line-height:1.25;min-width:0}
 .ident-txt b{font-family:var(--f-crt);font-size:19px;letter-spacing:.1em;text-transform:uppercase;color:var(--amber);text-shadow:var(--glow-a);font-weight:400;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -117,7 +118,7 @@ h3{font-family:var(--f-crt);font-size:22px;letter-spacing:.12em;text-transform:u
 .hero-art{display:flex;justify-content:center;min-width:0}
 .scope{position:relative;width:min(440px,100%);aspect-ratio:1;max-width:100%}
 .scope canvas{width:100%;height:100%;display:block;border-radius:50%;box-shadow:0 0 0 1px var(--line-2),0 0 40px rgba(80,255,120,.12),inset 0 0 60px rgba(0,0,0,.8)}
-.scope img{position:absolute;inset:22%;width:56%;height:56%;object-fit:contain;filter:drop-shadow(0 0 12px rgba(230,211,90,.35));opacity:.95}
+.scope img{position:absolute;inset:18%;width:64%;height:64%;object-fit:contain;filter:drop-shadow(0 0 3px rgba(157,255,176,.55)) drop-shadow(0 0 22px rgba(80,255,120,.25));opacity:.96}
 .scope-read{position:absolute;left:0;right:0;bottom:-30px;display:flex;justify-content:space-between;font-family:var(--f-crt);font-size:18px;letter-spacing:.1em;color:var(--fg-dim)}
 .scope-read b{color:var(--fg);font-weight:400}
 
