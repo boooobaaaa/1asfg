@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>OPSNET Activity Log</title>
-<meta name="description" content="Activity log, operations record and leaderboard.">
+<meta name="description" content="Activity log, operations record, order of battle and leaderboard.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="icon" type="image/png" href="assets/favicon.png">
@@ -27,6 +27,7 @@
         <a href="#command" data-tab="command">Command</a>
         <a href="#ops" data-tab="ops">Operations Log</a>
         <a href="#leaderboard" data-tab="leaderboard">Leaderboard</a>
+        <a href="#roster" data-tab="roster">Roster</a>
         <a href="#admin" data-tab="admin">Admin</a>
       </nav>
     </div>
@@ -47,6 +48,7 @@
           <div class="hero-cta">
             <a class="btn solid" href="#ops">View operations log ›</a>
             <a class="btn" href="#leaderboard">Leaderboard</a>
+            <a class="btn" href="#roster">Order of battle</a>
           </div>
         </div>
         <div class="hero-art">
@@ -82,10 +84,17 @@
           <div class="sec-head"><h2>Recent operations</h2><a href="#ops">All →</a></div>
           <div class="oplist" id="recentOps"></div>
         </div>
-        <div>
-          <div class="sec-head"><h2>Top combatants</h2><a href="#leaderboard">Full →</a></div>
-          <p class="sub">This month · resets on the 1st</p>
-          <ol class="board" id="topBoard"></ol>
+        <div class="side-col">
+          <div>
+            <div class="sec-head"><h2>Detachments</h2><a href="#roster">ORBAT →</a></div>
+            <p class="sub">Points this month</p>
+            <div class="rivalry" id="rivalry"></div>
+          </div>
+          <div>
+            <div class="sec-head"><h2>Top combatants</h2><a href="#leaderboard">Full →</a></div>
+            <p class="sub">This month · resets on the 1st</p>
+            <ol class="board" id="topBoard"></ol>
+          </div>
         </div>
       </div>
     </section>
@@ -102,6 +111,7 @@
             <button type="button" data-v="practice" aria-pressed="false">Practice raid</button>
             <button type="button" data-v="raid" aria-pressed="false">Raid</button>
           </div>
+          <select class="field" id="opDet" aria-label="Detachment"></select>
           <select class="field" id="sort" aria-label="Sort">
             <option value="new">Newest first</option>
             <option value="old">Oldest first</option>
@@ -124,11 +134,12 @@
             <button type="button" data-v="month" aria-pressed="true">This month</button>
             <button type="button" data-v="all" aria-pressed="false">All time</button>
           </div>
+          <div class="seg" id="lbDetSeg" role="group" aria-label="Detachment"></div>
         </div>
         <div class="tablewrap">
           <table class="lb">
             <thead><tr>
-              <th>#</th><th data-k="username">Operator</th><th data-k="rank">Rank</th>
+              <th>#</th><th data-k="username">Operator</th><th data-k="rankIdx">Rank</th><th data-k="assign">Assignment</th>
               <th class="num" data-k="training">TRN</th><th class="num" data-k="practice">PRC</th><th class="num" data-k="raid">RAID</th>
               <th class="num" data-k="rate">Attendance</th><th class="num" data-k="points">Points</th>
             </tr></thead>
@@ -136,6 +147,20 @@
           </table>
         </div>
         <p class="legend" id="legend"></p>
+      </div>
+    </section>
+
+    <!-- ═════════ ROSTER / ORBAT ═════════ -->
+    <section id="v-roster" class="view" hidden>
+      <div class="wrap">
+        <div class="page-head"><p class="kicker">Order of battle · <span class="unitCode">—</span></p><h1>Roster</h1></div>
+        <div class="toolbar">
+          <input class="field grow" id="rq" type="search" placeholder="Find an operator…" autocomplete="off">
+          <span class="count" id="rosterCount" style="margin:0"></span>
+        </div>
+        <div class="orbat" id="orbat"></div>
+        <div id="unassigned"></div>
+        <div class="rank-key" id="rankKey"></div>
       </div>
     </section>
 
@@ -163,6 +188,7 @@
             <button type="button" data-a="log" aria-selected="true">Log operation</button>
             <button type="button" data-a="ops" aria-selected="false">Manage ops</button>
             <button type="button" data-a="people" aria-selected="false">Personnel</button>
+            <button type="button" data-a="structure" aria-selected="false">Structure</button>
             <button type="button" data-a="settings" aria-selected="false">Command settings</button>
           </div>
 
@@ -170,15 +196,17 @@
           <form class="panel" id="opForm" data-pane="log" autocomplete="off">
             <h3 id="opFormTitle">Log an operation</h3>
             <div class="grid4">
-              <label>Unit<select class="field" id="fUnit"></select></label>
+              <label class="unit-only">Unit<select class="field" id="fUnit"></select></label>
               <label>Type<select class="field" id="fType"><option value="training">Training</option><option value="practice">Practice raid</option><option value="raid">Raid</option></select></label>
               <label>Date<input class="field" id="fDate" type="date" required></label>
               <label>Host (Roblox user)<input class="field" id="fHost" list="userList" placeholder="username"></label>
             </div>
-            <div class="grid2">
+            <div class="grid3">
               <label>Operation name<input class="field" id="fName" required placeholder="e.g. Training Operation"></label>
+              <label>Hosted for<select class="field" id="fDet"></select></label>
               <label>Proof link<input class="field" id="fProof" type="url" placeholder="https:// screenshot or Discord message"></label>
             </div>
+            <p class="hint">A detachment event only counts toward the attendance rate of that detachment's members. Group-wide events count for everyone.</p>
             <label>Summary / after-action notes<textarea class="field" id="fSum" rows="3"></textarea></label>
             <label>Attendees <span class="hint">one per line, or separated by commas or spaces. New names are added to the roster.</span>
               <textarea class="field mono" id="fAtt" rows="5" placeholder="danielmax&#10;rikilol999&#10;Tactical_Sheperd"></textarea></label>
@@ -199,16 +227,47 @@
           <!-- personnel -->
           <div class="panel" data-pane="people" hidden>
             <h3 id="pTitle">Add personnel</h3>
-            <form id="pForm" class="grid5" autocomplete="off">
-              <label>Roblox username<input class="field" id="pUser" required></label>
-              <label>Rank<input class="field" id="pRank" list="rankList" placeholder="PVT"></label>
-              <label>Unit<select class="field" id="pUnit"></select></label>
-              <label>Joined<input class="field" id="pJoin" type="date"></label>
-              <label>Status<select class="field" id="pStatus"><option value="active">Active</option><option value="inactive">Inactive</option></select></label>
+            <form id="pForm" class="pform" autocomplete="off">
+              <div class="grid4">
+                <label>Roblox username<input class="field" id="pUser" required></label>
+                <label>Rank<select class="field" id="pRank"></select></label>
+                <label>Billet<select class="field" id="pBillet"></select></label>
+                <label>Status<select class="field" id="pStatus"><option value="active">Active</option><option value="inactive">Inactive</option></select></label>
+              </div>
+              <div class="grid4">
+                <label>Detachment<select class="field" id="pDet"></select></label>
+                <label>Company<select class="field" id="pCoy"></select></label>
+                <label>Joined<input class="field" id="pJoin" type="date"></label>
+                <label class="unit-only">Unit<select class="field" id="pUnit"></select></label>
+              </div>
+              <p class="hint" id="pHint">Headquarters Element billets sit above the detachments. Company CO and XO need a company.</p>
               <div class="btnrow"><button class="btn solid" type="submit" id="pSave">Add</button><button class="btn" type="button" id="pCancel" hidden>Cancel</button></div>
             </form>
-            <input class="field grow" id="pq" type="search" placeholder="Filter roster…">
+            <div class="toolbar" style="margin:6px 0 0">
+              <input class="field grow" id="pq" type="search" placeholder="Filter roster…">
+              <select class="field" id="pqDet" aria-label="Filter by detachment"></select>
+            </div>
             <div class="mlist" id="mPeople"></div>
+          </div>
+
+          <!-- structure -->
+          <div class="panel" data-pane="structure" hidden>
+            <h3>Detachments and companies</h3>
+            <div class="mlist" id="mForm"></div>
+            <form id="fmForm" autocomplete="off">
+              <div class="grid4">
+                <label>Code<input class="field" id="fmId" placeholder="FT-3" required></label>
+                <label>Type<select class="field" id="fmKind"><option value="company">Company</option><option value="detachment">Detachment</option></select></label>
+                <label>Parent detachment<select class="field" id="fmParent"></select></label>
+                <label>Order<input class="field" id="fmSort" type="number" min="0" value="1"></label>
+              </div>
+              <div class="grid3">
+                <label>Name<input class="field" id="fmName" placeholder="3rd Company" required></label>
+                <label>Short Hanja / Korean name<input class="field" id="fmLocal" placeholder="猛虎"></label>
+                <label>Region / time zone<input class="field" id="fmRegion" placeholder="EU / ASIA"></label>
+              </div>
+              <div class="btnrow" style="margin-top:12px"><button class="btn solid" type="submit" id="fmSave">Save</button><button class="btn" type="button" id="fmCancel">Clear</button></div>
+            </form>
           </div>
 
           <!-- settings -->
@@ -223,12 +282,12 @@
               <label>Raid pts<input class="field" id="sPR" type="number" min="0"></label>
             </div>
             <label>Ticker lines <span class="hint">one per line</span><textarea class="field" id="sTick" rows="4"></textarea></label>
-            <h3>Units</h3>
+            <h3>Unit</h3>
             <div class="mlist" id="mUnits"></div>
             <div class="grid4">
-              <label>Code<input class="field" id="uId" placeholder="ROCMC"></label>
+              <label>Code<input class="field" id="uId" placeholder="1ASFG"></label>
               <label>Full name<input class="field" id="uName"></label>
-              <label>Hero title<input class="field" id="uLocal" placeholder="中華民國海軍陸戰隊"></label>
+              <label>Hero title<input class="field" id="uLocal" placeholder="第1空輸特戰團"></label>
               <label>Tagline<input class="field" id="uTag"></label>
             </div>
             <div class="btnrow">
@@ -248,10 +307,6 @@
 </div>
 
 <datalist id="userList"></datalist>
-<datalist id="rankList">
-  <option>PVT</option><option>PFC</option><option>CPL</option><option>SGT</option><option>SSG</option><option>SFC</option><option>MSG</option><option>SGM</option>
-  <option>WO</option><option>2LT</option><option>1LT</option><option>CPT</option><option>MAJ</option><option>LTC</option><option>COL</option><option>BG</option><option>MG</option><option>LTG</option><option>GEN</option>
-</datalist>
 <div class="toast" id="toast" role="status" hidden></div>
 
 <script src="config.js"></script>
