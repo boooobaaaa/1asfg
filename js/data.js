@@ -73,6 +73,9 @@
     introEnabled: true,
     introSound: true,
     introMusic: true,
+    introMusicSrc: "",
+    introMusicOffset: 0,
+    introMusicVolume: 70,
   };
 
   function mergeSettings(s) {

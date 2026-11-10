@@ -725,6 +725,10 @@
         <label class="span-all" style="display:flex;gap:10px;align-items:center;font-size:12px;cursor:pointer"><input type="checkbox" name="introEnabled" ${s.introEnabled !== false ? "checked" : ""} style="accent-color:var(--blue-hi)"/> Play the intro sequence on each visitor's first page load per session</label>
         <label class="span-all" style="display:flex;gap:10px;align-items:center;font-size:12px;cursor:pointer"><input type="checkbox" name="introSound" ${s.introSound !== false ? "checked" : ""} style="accent-color:var(--blue-hi)"/> Intro sound effects (visitors get a "click to establish uplink" screen first, because browsers only allow sound after a click)</label>
         <label class="span-all" style="display:flex;gap:10px;align-items:center;font-size:12px;cursor:pointer"><input type="checkbox" name="introMusic" ${s.introMusic !== false ? "checked" : ""} style="accent-color:var(--blue-hi)"/> Intro soundtrack (music bed under the sound effects)</label>
+        <label class="field span2"><span>Custom intro music file (optional)</span><input class="in" name="introMusicSrc" value="${esc(s.introMusicSrc || "")}" placeholder="assets/intro-music.mp3  — leave empty for the built-in cue"/></label>
+        <label class="field"><span>Start the file at (seconds)</span><input class="in" type="number" min="0" step="0.1" name="introMusicOffset" value="${esc(s.introMusicOffset || 0)}"/></label>
+        <label class="field"><span>Music volume (%)</span><input class="in" type="number" min="0" max="150" step="5" name="introMusicVolume" value="${esc(s.introMusicVolume ?? 70)}"/></label>
+        <p class="hint span-all" style="margin:0">Use an audio file you have the rights to (MP3, M4A, OGG or WAV). Put it in the site's <b>assets</b> folder and enter its path, or paste a direct link to a file on a host that allows cross-site loading. It starts with the intro and fades out as the site appears. If it can't load, the built-in cue plays instead.</p>
       </div></fieldset>
       <fieldset style="margin-top:14px"><legend>Rank list (lowest → highest)</legend>
         <textarea class="in" name="ranks" rows="10">${esc(s.ranks.join("\n"))}</textarea>
@@ -942,11 +946,49 @@
       return true;
     }
 
+    /* ---- CUSTOM MUSIC FILE (optional, set in Admin → Site Settings).
+       Fetched as soon as settings load so it's ready by the time the visitor clicks;
+       decoded and started in sync with the intro, faded out with everything else. */
+    const track = { src: "", raw: null, buf: null, failed: false, loading: null, offset: 0, vol: 0.7 };
+    function preload(src, offset = 0, vol = 70) {
+      track.offset = Math.max(0, +offset || 0); track.vol = Math.max(0, Math.min(1.5, (+vol || 0) / 100));
+      src = String(src || "").trim();
+      if (src === track.src) return;
+      Object.assign(track, { src, raw: null, buf: null, failed: false, loading: null });
+      if (!src) return;
+      track.loading = fetch(src).then((r) => { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); })
+        .then((a) => { if (track.src === src) track.raw = a; })
+        .catch((e) => { if (track.src === src) { track.failed = true; console.warn("Intro music could not be loaded:", src, e); } });
+    }
+    async function decoded() {
+      if (track.buf) return track.buf;
+      if (track.loading) await track.loading;
+      if (!track.raw || !ctx) return null;
+      try { track.buf = await new Promise((res, rej) => ctx.decodeAudioData(track.raw.slice(0), res, rej)); }
+      catch (e) { track.failed = true; console.warn("Intro music could not be decoded:", e); }
+      return track.buf;
+    }
+    function fileMusic() {
+      if (!track.src || track.failed || !bus) return false;
+      const myBus = bus;
+      decoded().then((buf) => {
+        if (!buf || bus !== myBus) return;               // skipped/muted while loading
+        const now = ctx.currentTime, introT = Math.max(0, now - base);
+        const from = track.offset + introT;              // stay in sync if it arrived late
+        if (from >= buf.duration) return;
+        const src = ctx.createBufferSource(); src.buffer = buf;
+        const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, now); g.gain.exponentialRampToValueAtTime(Math.max(0.001, track.vol), now + (introT > 0.2 ? 0.25 : 0.05));
+        src.connect(g); g.connect(myBus); src.start(now, from);
+      });
+      return true;
+    }
+
     // the whole intro score; times are intro seconds (same clock as the CSS timeline)
     function intro(p, elapsed = 0) {
       if (!open(elapsed)) return;
       let scored = false;
-      try { scored = music(p); } catch (e) { console.warn("music", e); }
+      let musicOff = false; try { musicOff = localStorage.getItem("1asfg_intro_music_off") === "1"; } catch (e) {}
+      try { scored = (!musicOff && fileMusic()) || music(p); } catch (e) { console.warn("music", e); }
       if (!scored) drone(0, p.end + 0.5);   // plain hum only when the soundtrack is off
       // materialise: sub thump + falling whoosh + the two digital chirps over a pulsing tone
       tone(0.02, 72, 1.1, { gain: 0.35, f2: 36, a: 0.02 });
@@ -970,7 +1012,7 @@
       tone(10.6, 990, 0.09, { gain: 0.06 }); tone(10.72, 1480, 0.16, { gain: 0.06 });
       glitch(p.end - 0.05, 0.55, 0.12);
     }
-    return { wanted, setWanted, ensure, intro, close, outro: () => { if (bus) { glitch((ctx.currentTime - base), 0.45, 0.1); close(1.1); } } };
+    return { wanted, setWanted, ensure, intro, close, preload, outro: () => { if (bus) { glitch((ctx.currentTime - base), 0.45, 0.1); close(1.1); } } };
   })();
 
   const Intro = (() => {
@@ -1010,6 +1052,7 @@
     function fill() {
       if (!el) return;
       const s = S.settings;
+      Sfx.preload(s.introMusic !== false ? s.introMusicSrc : "", s.introMusicOffset, s.introMusicVolume);
       $("#in-sys").textContent = `${s.unitShort.toUpperCase()} SYSTEMS`;
       $("#in-logo").textContent = s.unitShort.toUpperCase();
       $("#in-code").textContent = `RTWBN://${s.unitShort.toUpperCase()}-${String(S.events.length).padStart(4, "0")}-공수`;
@@ -1321,6 +1364,9 @@
           s.introEnabled = f.introEnabled.checked;
           s.introSound = f.introSound.checked;
           s.introMusic = f.introMusic.checked;
+          s.introMusicSrc = val("introMusicSrc");
+          s.introMusicOffset = Math.max(0, parseFloat(val("introMusicOffset")) || 0);
+          s.introMusicVolume = Math.max(0, Math.min(150, parseInt(val("introMusicVolume"), 10) || 0));
           const ok = await act(async () => { await DB.saveSettings(s); await reload(); }, "Settings saved");
           if (ok) refresh();
           break;
