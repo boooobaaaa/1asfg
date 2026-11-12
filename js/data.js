@@ -8,7 +8,7 @@
   "use strict";
   const CFG = window.SITE_CONFIG || {};
   const LIVE = !!(CFG.SUPABASE_URL && CFG.SUPABASE_ANON_KEY);
-  const SUPABASE_CDN = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js";
+  const SUPABASE_CDN = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.min.js"; // supports sb_publishable_ keys
   const PHOTO_BUCKET = "photos";
 
   const uid = () =>
