@@ -73,9 +73,11 @@
     introEnabled: true,
     introSound: true,
     introMusic: true,
-    introMusicSrc: "",
+    introMusicSrc: "",          // legacy single-file setting (still honoured)
     introMusicOffset: 0,
     introMusicVolume: 70,
+    introTracks: [],            // [{ id, name, src, path, offset, volume, duration }]
+    introTrackId: "",           // "" = built-in cue
   };
 
   function mergeSettings(s) {
@@ -88,6 +90,7 @@
       white_horse: Object.assign({}, DEFAULT_SETTINGS.detachments.white_horse, (s.detachments || {}).white_horse || {}),
       fierce_tiger: Object.assign({}, DEFAULT_SETTINGS.detachments.fierce_tiger, (s.detachments || {}).fierce_tiger || {}),
     };
+    if (!Array.isArray(out.introTracks)) out.introTracks = [];
     ["ticker", "transmissions", "ranks"].forEach((k) => {
       if (!Array.isArray(out[k]) || !out[k].length) out[k] = clone(DEFAULT_SETTINGS[k]);
     });
@@ -197,6 +200,29 @@
     try { localStorage.setItem(KEY, JSON.stringify(memStore)); }
     catch (e) { console.warn("Could not persist demo data:", e); }
   }
+  /* demo-mode media store: audio files are too big for localStorage, so they live in IndexedDB */
+  const IDB = {
+    db: null,
+    open() {
+      if (this.db) return Promise.resolve(this.db);
+      return new Promise((res, rej) => {
+        if (!window.indexedDB) return rej(new Error("This browser can't store files offline."));
+        const r = indexedDB.open("1asfg_media", 1);
+        r.onupgradeneeded = () => r.result.createObjectStore("files");
+        r.onsuccess = () => res((this.db = r.result));
+        r.onerror = () => rej(r.error || new Error("Could not open browser storage."));
+      });
+    },
+    async tx(mode, fn) {
+      const db = await this.open();
+      return new Promise((res, rej) => { const t = db.transaction("files", mode); const st = t.objectStore("files"); const r = fn(st); t.oncomplete = () => res(r && r.result); t.onerror = () => rej(t.error); t.onabort = () => rej(t.error || new Error("Storage quota exceeded.")); });
+    },
+    put(id, blob) { return this.tx("readwrite", (st) => st.put(blob, id)); },
+    get(id) { return this.tx("readonly", (st) => st.get(id)); },
+    del(id) { return this.tx("readwrite", (st) => st.delete(id)); },
+  };
+  const extOf = (file) => ((file.name || "").match(/\.([a-z0-9]{2,4})$/i) || [, (file.type.split("/")[1] || "mp3")])[1].toLowerCase();
+
   let demoAuthed = false;
   try { demoAuthed = sessionStorage.getItem("1asfg_admin") === "1"; } catch (e) {}
 
@@ -250,6 +276,12 @@
     async uploadPhoto(blob) {
       return await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(blob); });
     },
+    async uploadMedia(file) {
+      const id = "track-" + uid();
+      await IDB.put(id, file);
+      return { src: "idb:" + id, path: id };
+    },
+    async deleteMedia(path) { if (path) await IDB.del(path).catch(() => {}); },
     async importAll(data) {
       memStore = { members: data.members || [], events: data.events || [], leadership: data.leadership || [], settings: mergeSettings(data.settings) };
       writeStore();
@@ -338,6 +370,13 @@
       chk(await c.storage.from(PHOTO_BUCKET).upload(path, blob, { contentType: "image/jpeg", upsert: false }));
       return c.storage.from(PHOTO_BUCKET).getPublicUrl(path).data.publicUrl;
     },
+    async uploadMedia(file) {
+      const c = await client();
+      const path = `music/${uid()}.${extOf(file)}`;
+      chk(await c.storage.from(PHOTO_BUCKET).upload(path, file, { contentType: file.type || "audio/mpeg", upsert: false, cacheControl: "31536000" }));
+      return { src: c.storage.from(PHOTO_BUCKET).getPublicUrl(path).data.publicUrl, path };
+    },
+    async deleteMedia(path) { if (!path) return; const c = await client(); await c.storage.from(PHOTO_BUCKET).remove([path]); },
     async importAll(data) {
       const c = await client();
       const strip = (o, keys) => { const x = { ...o }; keys.forEach((k) => delete x[k]); return x; };
@@ -368,5 +407,12 @@
     },
   };
 
-  window.DB = Object.assign({ LIVE, uid, DEFAULT_SETTINGS, mergeSettings }, LIVE ? Live : Demo);
+  // resolve a stored track reference ("idb:<id>" in demo mode, otherwise a URL) to a Blob
+  async function mediaBlob(src) {
+    src = String(src || "");
+    if (src.startsWith("idb:")) { const b = await IDB.get(src.slice(4)); if (!b) throw new Error("Track not found in this browser."); return b; }
+    const r = await fetch(src); if (!r.ok) throw new Error("HTTP " + r.status); return await r.blob();
+  }
+
+  window.DB = Object.assign({ LIVE, uid, DEFAULT_SETTINGS, mergeSettings, mediaBlob }, LIVE ? Live : Demo);
 })();

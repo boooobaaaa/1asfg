@@ -42,6 +42,11 @@
     S.opNo = {};
     S.events.slice().reverse().forEach((e, i) => (S.opNo[e.id] = i + 1));
     S.loaded = true;
+    const st = S.settings;
+    if (st.introMusicSrc && !(st.introTracks || []).some((t) => t.src === st.introMusicSrc)) {
+      st.introTracks = (st.introTracks || []).concat({ id: "legacy", name: st.introMusicSrc.split("/").pop(), src: st.introMusicSrc, path: "", offset: st.introMusicOffset || 0, volume: st.introMusicVolume ?? 70, duration: 0 });
+      if (!st.introTrackId) st.introTrackId = "legacy";
+    }
     applyChrome();
     Intro.fill();
   }
@@ -479,7 +484,7 @@
   async function viewAdmin() {
     try { admin = await DB.adminStatus(); } catch (e) { admin = { signedIn: false, isAdmin: false }; }
     if (!admin.isAdmin) return adminGate();
-    const tabs = [["log", UI.editEventId ? "Edit Operation" : "Log Operation"], ["ops", "Operations"], ["personnel", "Personnel"], ["staff", "Command Staff"], ["settings", "Site Settings"], ["backup", "Backup"]];
+    const tabs = [["log", UI.editEventId ? "Edit Operation" : "Log Operation"], ["ops", "Operations"], ["personnel", "Personnel"], ["staff", "Command Staff"], ["music", "Music"], ["settings", "Site Settings"], ["backup", "Backup"]];
     let body = "";
     switch (UI.adminTab) {
       case "ops": body = adminOps(); break;
@@ -487,6 +492,7 @@
       case "staff": body = adminStaff(); break;
       case "settings": body = adminSettings(); break;
       case "backup": body = adminBackup(); break;
+      case "music": body = adminMusic(); break;
       default: body = adminLog();
     }
     return `${pageHead("RESTRICTED", "지휘 콘솔", "Command Console", `Signed in as ${esc(admin.email || "admin")}`, `<button class="btn sm" data-act="signout">Sign out</button>`)}
@@ -725,16 +731,107 @@
         <label class="span-all" style="display:flex;gap:10px;align-items:center;font-size:12px;cursor:pointer"><input type="checkbox" name="introEnabled" ${s.introEnabled !== false ? "checked" : ""} style="accent-color:var(--blue-hi)"/> Play the intro sequence on each visitor's first page load per session</label>
         <label class="span-all" style="display:flex;gap:10px;align-items:center;font-size:12px;cursor:pointer"><input type="checkbox" name="introSound" ${s.introSound !== false ? "checked" : ""} style="accent-color:var(--blue-hi)"/> Intro sound effects (visitors get a "click to establish uplink" screen first, because browsers only allow sound after a click)</label>
         <label class="span-all" style="display:flex;gap:10px;align-items:center;font-size:12px;cursor:pointer"><input type="checkbox" name="introMusic" ${s.introMusic !== false ? "checked" : ""} style="accent-color:var(--blue-hi)"/> Intro soundtrack (music bed under the sound effects)</label>
-        <label class="field span2"><span>Custom intro music file (optional)</span><input class="in" name="introMusicSrc" value="${esc(s.introMusicSrc || "")}" placeholder="assets/intro-music.mp3  — leave empty for the built-in cue"/></label>
-        <label class="field"><span>Start the file at (seconds)</span><input class="in" type="number" min="0" step="0.1" name="introMusicOffset" value="${esc(s.introMusicOffset || 0)}"/></label>
-        <label class="field"><span>Music volume (%)</span><input class="in" type="number" min="0" max="150" step="5" name="introMusicVolume" value="${esc(s.introMusicVolume ?? 70)}"/></label>
-        <p class="hint span-all" style="margin:0">Use an audio file you have the rights to (MP3, M4A, OGG or WAV). Put it in the site's <b>assets</b> folder and enter its path, or paste a direct link to a file on a host that allows cross-site loading. It starts with the intro and fades out as the site appears. If it can't load, the built-in cue plays instead.</p>
+        <p class="hint span-all" style="margin:0">Upload and choose the loading-page music in the <button type="button" class="replay" data-atab="music" style="color:var(--blue-hi)">Music tab</button>.</p>
       </div></fieldset>
       <fieldset style="margin-top:14px"><legend>Rank list (lowest → highest)</legend>
         <textarea class="in" name="ranks" rows="10">${esc(s.ranks.join("\n"))}</textarea>
         <p class="hint" style="margin:8px 0 0">Format: <b>[CODE] Korean | ENGLISH</b>. Order matters: it's used for tie-breaks and sorting.</p></fieldset>
       <div class="btn-row" style="margin-top:16px;justify-content:flex-end"><button class="btn primary" type="submit">Save settings</button></div>
     </form>`;
+  }
+
+  /* ---- Music (loading-page soundtrack library) */
+  const fmtDur = (d) => (d > 0 ? `${Math.floor(d / 60)}:${String(Math.round(d % 60)).padStart(2, "0")}` : "—");
+  const MUSIC = { staged: null, stagedDur: 0, busy: false, playing: null, audio: null, url: null, timer: 0 };
+  function adminMusic() {
+    const s = S.settings, tracks = s.introTracks || [], sel = s.introTrackId || "";
+    const cur = tracks.find((t) => t.id === sel);
+    const row = (t) => `<tr data-track="${esc(t.id)}">
+        <td><input type="radio" name="trackSel" value="${esc(t.id)}" ${sel === t.id ? "checked" : ""} style="accent-color:var(--blue-hi)" aria-label="Use ${esc(t.name)}"/></td>
+        <td><input class="in" data-tf="name" value="${esc(t.name)}" maxlength="80" style="min-width:160px"/></td>
+        <td class="n hint">${fmtDur(t.duration)}</td>
+        <td><input class="in" type="number" data-tf="offset" min="0" step="0.1" value="${esc(t.offset || 0)}" style="width:90px"/></td>
+        <td><input class="in" type="number" data-tf="volume" min="0" max="150" step="5" value="${esc(t.volume ?? 70)}" style="width:80px"/></td>
+        <td><div class="row-actions"><button type="button" class="btn sm" data-preview="${esc(t.id)}">${MUSIC.playing === t.id ? "■ Stop" : "▶ Preview"}</button><button type="button" class="btn sm danger" data-deltrack="${esc(t.id)}">Delete</button></div></td>
+      </tr>`;
+    return `
+    ${s.introMusic === false ? `<div class="mode-banner">■ The intro soundtrack is switched off in Site Settings, so no music plays on the loading page.</div>` : ""}
+    <div class="grid2" style="margin-bottom:18px">
+      <div class="panel brk">
+        <div class="sec-h"><h2>Upload a track</h2></div>
+        <div class="grid2">
+          <label class="field span-all"><span>Audio file (MP3, M4A, OGG or WAV · up to 20 MB)</span><input class="in" type="file" id="music-file" accept="audio/*,.mp3,.m4a,.ogg,.oga,.wav"/></label>
+          <label class="field span-all"><span>Track name</span><input class="in" id="music-name" maxlength="80" value="${esc(MUSIC.staged ? MUSIC.staged.name.replace(/\.[^.]+$/, "") : "")}" placeholder="e.g. Uplink theme"/></label>
+        </div>
+        <div class="btn-row" style="margin-top:12px;align-items:center"><button type="button" class="btn primary" data-act="music-upload" ${MUSIC.staged && !MUSIC.busy ? "" : "disabled"}>${MUSIC.busy ? "Uploading…" : "Upload"}</button><span class="hint" id="music-status">${MUSIC.staged ? `${esc(MUSIC.staged.name)} · ${(MUSIC.staged.size / 1048576).toFixed(1)} MB · ${fmtDur(MUSIC.stagedDur)}` : ""}</span></div>
+        <p class="hint" style="margin:12px 0 0">Only upload music you have the rights to use on a public site. ${DB.LIVE ? "Files are stored in your Supabase storage." : "Demo mode: files are kept in this browser only, and aren't included in backups."}</p>
+      </div>
+      <div class="panel brk">
+        <div class="sec-h"><h2>Loading page music</h2></div>
+        <p style="margin:0 0 6px">Now playing: <b style="color:var(--hi)">${cur ? esc(cur.name) : "Uplink (built-in original)"}</b></p>
+        <p class="hint" style="margin:0 0 14px">The track starts with the intro, stays in sync with it and fades out as the site appears. <b>Start at</b> skips into the track, so a big hit can land on the map cut at 7.3s (hit at 12.0s in the file → start at 4.7).</p>
+        <div class="btn-row"><button type="button" class="btn blue" data-act="intro">▶ Test the intro</button></div>
+      </div>
+    </div>
+    <form id="music-form" autocomplete="off">
+      <div class="tbl-wrap"><table class="tbl">
+        <thead><tr><th>Use</th><th>Track</th><th class="n">Length</th><th>Start at (s)</th><th>Volume %</th><th></th></tr></thead>
+        <tbody>
+          <tr><td><input type="radio" name="trackSel" value="" ${!cur ? "checked" : ""} style="accent-color:var(--blue-hi)" aria-label="Use the built-in cue"/></td>
+            <td><b style="color:var(--hi)">Uplink</b> <span class="hint">· built-in original cue, no file needed</span></td><td class="n hint">0:12</td><td class="hint">—</td><td class="hint">—</td>
+            <td><div class="row-actions"><button type="button" class="btn sm" data-act="intro">▶ Hear it in the intro</button></div></td></tr>
+          ${tracks.map(row).join("")}
+        </tbody>
+      </table></div>
+      ${tracks.length ? "" : `<p class="hint" style="margin:10px 0 0">No uploaded tracks yet. Upload one above, then pick it here.</p>`}
+      <div class="btn-row" style="margin-top:14px;justify-content:flex-end"><button class="btn primary" type="submit">Save music settings</button></div>
+    </form>`;
+  }
+  function stopPreview() {
+    clearTimeout(MUSIC.timer);
+    if (MUSIC.audio) { try { MUSIC.audio.pause(); } catch (e) {} MUSIC.audio = null; }
+    if (MUSIC.url) { URL.revokeObjectURL(MUSIC.url); MUSIC.url = null; }
+    const was = MUSIC.playing; MUSIC.playing = null;
+    if (was) { const b = document.querySelector(`[data-preview="${CSS.escape(was)}"]`); if (b) b.textContent = "▶ Preview"; }
+  }
+  async function preview(id) {
+    if (MUSIC.playing === id) return stopPreview();
+    stopPreview();
+    const t = (S.settings.introTracks || []).find((x) => x.id === id); if (!t) return;
+    const tr = document.querySelector(`tr[data-track="${CSS.escape(id)}"]`);
+    const off = tr ? parseFloat(tr.querySelector('[data-tf="offset"]').value) || 0 : t.offset || 0;
+    const vol = tr ? parseFloat(tr.querySelector('[data-tf="volume"]').value) : t.volume ?? 70;
+    try {
+      const blob = await DB.mediaBlob(t.src);
+      MUSIC.url = URL.createObjectURL(blob);
+      const a = new Audio(MUSIC.url); a.volume = Math.max(0, Math.min(1, (isNaN(vol) ? 70 : vol) / 100));
+      await new Promise((res) => { a.addEventListener("loadedmetadata", res, { once: true }); a.addEventListener("error", res, { once: true }); });
+      try { a.currentTime = off; } catch (e) {}
+      await a.play();
+      MUSIC.audio = a; MUSIC.playing = id;
+      const b = document.querySelector(`[data-preview="${CSS.escape(id)}"]`); if (b) b.textContent = "■ Stop";
+      MUSIC.timer = setTimeout(stopPreview, 12500);       // about the length of the intro
+      a.addEventListener("ended", stopPreview, { once: true });
+    } catch (e) { stopPreview(); toast("Couldn't play that track: " + (e.message || e), true); }
+  }
+  const audioDuration = (file) => new Promise((res) => {
+    const u = URL.createObjectURL(file), a = new Audio();
+    const done = (d) => { URL.revokeObjectURL(u); res(d); };
+    a.preload = "metadata"; a.onloadedmetadata = () => done(isFinite(a.duration) ? a.duration : 0); a.onerror = () => done(-1); a.src = u;
+  });
+  function readTrackRows() {
+    return (S.settings.introTracks || []).map((t) => {
+      const tr = document.querySelector(`tr[data-track="${CSS.escape(t.id)}"]`); if (!tr) return t;
+      const q = (k) => tr.querySelector(`[data-tf="${k}"]`).value;
+      return Object.assign({}, t, { name: q("name").trim() || t.name, offset: Math.max(0, parseFloat(q("offset")) || 0), volume: Math.max(0, Math.min(150, parseInt(q("volume"), 10) || 0)) });
+    });
+  }
+  async function saveMusic(patch, msg) {
+    const s2 = JSON.parse(JSON.stringify(S.settings));
+    Object.assign(s2, patch); s2.introMusicSrc = "";     // the library replaces the old single-file setting
+    const ok = await act(async () => { await DB.saveSettings(s2); await reload(); }, msg);
+    if (ok) refresh();
+    return ok;
   }
 
   /* ---- Backup */
@@ -858,91 +955,95 @@
     function music(p) {
       let off = false; try { off = localStorage.getItem("1asfg_intro_music_off") === "1"; } catch (e) {}
       if (!bus || off) return false;
-      const B = 0.73;                         // one beat, seconds (≈82 bpm)
-      const bar = (n) => n * 4 * B;
-      const mb = ctx.createGain(); mb.gain.value = 1.0;
-      const hp = ctx.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 38; hp.Q.value = 0.6; mb.connect(hp); hp.connect(bus);
+      /* "Uplink" — original cue. Dark, relentless action-score feel:
+         full intensity almost at once, very heavy distorted sub, hollow mids,
+         a bright high ticking figure on top, ~115 bpm. Beat 14 = the 7.3s map cut,
+         beat 22 = the final hit as the site appears. */
+      const B = 7.3 / 14;                               // ≈0.521 s per beat (115 bpm)
+      const mb = ctx.createGain(); mb.gain.value = 0.82;
+      const hp = ctx.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 28; hp.Q.value = 0.6;
+      const scoop = ctx.createBiquadFilter(); scoop.type = "peaking"; scoop.frequency.value = 480; scoop.Q.value = 0.9; scoop.gain.value = -7; // hollow mids
+      mb.connect(scoop); scoop.connect(hp); hp.connect(bus);
       const cv = ctx.createConvolver(); cv.buffer = reverbIR();
-      const wet = ctx.createGain(); wet.gain.value = 0.5; cv.connect(wet); wet.connect(mb);
+      const wet = ctx.createGain(); wet.gain.value = 0.45; cv.connect(wet); wet.connect(mb);
       const send = (amt) => { const g = ctx.createGain(); g.connect(mb); const s = ctx.createGain(); s.gain.value = amt; g.connect(s); s.connect(cv); return g; };
-      const dryBass = send(0.12), padBus = send(0.45), drumBus = send(0.35), fx = send(0.6);
-      const N = { A1: 55, Bb1: 58.27, C2: 65.41, D2: 73.42, A2: 110, Bb2: 116.54, C3: 130.81, Cs3: 138.59, D3: 146.83, E3: 164.81, F3: 174.61, G3: 196, A3: 220, Bb3: 233.08, C4: 261.63, D4: 293.66 };
-      // harmony per bar: i – VI – VII – i/V – i
+      // soft-clip saturation for the sub layer (gives the "growl" without harsh clipping)
+      const sat = ctx.createWaveShaper(); const cu = new Float32Array(1024);
+      for (let i = 0; i < 1024; i++) { const x = i / 511.5 - 1; cu[i] = Math.tanh(2.4 * x) / Math.tanh(2.4); }
+      sat.curve = cu; sat.oversample = "2x";
+      const subBus = ctx.createGain(); subBus.gain.value = 0.12; sat.connect(subBus); subBus.connect(mb);
+      const lowBus = send(0.1), brassBus = send(0.3), topBus = send(0.5), drumBus = send(0.25), fx = send(0.6);
+
+      const D1 = 36.71, D2 = 73.42, Eb2 = 77.78, F2 = 87.31, A1 = 55, Bb1 = 58.27, C2 = 65.41, Cs2 = 69.3;
+      // harmony (my own progression): i – bVI – bVII (+ a chromatic C# push) – i – V – i
       const plan = [
-        { at: 0,        root: N.D2, pad: [N.D3, N.F3, N.A3, N.D4] },
-        { at: bar(1),   root: N.Bb1, pad: [N.Bb2, N.D3, N.F3, N.Bb3] },
-        { at: bar(2),   root: N.C2, pad: [N.C3, N.E3, N.G3, N.C4] },
-        { at: 10 * B,   root: N.D2, pad: [N.D3, N.F3, N.A3, N.D4] },   // the map cut
-        { at: 14 * B,   root: N.A1, pad: [N.A2, N.Cs3, N.E3, N.A3] },  // dominant, tension
-        { at: 16 * B,   root: N.D2, pad: [N.D3, N.A3, N.D4] },         // final hit as the site appears
+        { at: 0,      root: D2,  fifth: D2 * 1.5 },
+        { at: 6 * B,  root: Bb1, fifth: F2 },
+        { at: 10 * B, root: C2,  fifth: C2 * 1.5 },
+        { at: 12 * B, root: Cs2, fifth: Cs2 * 1.5 },     // chromatic climb into the cut
+        { at: 14 * B, root: D2,  fifth: D2 * 1.5 },      // map cut
+        { at: 18 * B, root: Eb2, fifth: Eb2 * 1.5 },     // Phrygian rub
+        { at: 19 * B, root: A1,  fifth: A1 * 1.5 },
+        { at: 22 * B, root: D2,  fifth: D2 * 1.5 },      // final hit
       ];
       const chordAt = (t) => { let c = plan[0]; for (const x of plan) if (x.at <= t + 1e-6) c = x; return c; };
 
-      // pads: detuned saw stacks, slow swell, filtered (brass/string bed)
+      // 1) braams: swelling, distorted low brass on each chord change
       plan.forEach((c, i) => {
-        const end = i < plan.length - 1 ? plan[i + 1].at : c.at + 3.2;
-        const dur = end - c.at + 0.35;
-        const lp = ctx.createBiquadFilter(); lp.type = "lowpass"; lp.Q.value = 0.7;
-        const T = at(c.at); lp.frequency.setValueAtTime(1400, T); lp.frequency.linearRampToValueAtTime(i >= 3 ? 5200 : 3600, T + dur * 0.8);
-        lp.connect(padBus);
-        const g0 = i === plan.length - 1 ? 0.06 : 0.032, att = i === 0 ? 1.2 : (i === 3 ? 0.03 : 0.5);
-        c.pad.forEach((f) => [-9, 9].forEach((dt) => tone(c.at, f, dur, { type: "sawtooth", gain: g0, a: att, dest: lp, detune: dt })));
-        c.pad.slice(1).forEach((f) => tone(c.at, f * 2, dur, { type: "sawtooth", gain: g0 * 0.75, a: att + 0.2, dest: lp, detune: 4 }));
+        const end = i < plan.length - 1 ? plan[i + 1].at : c.at + 3.4;
+        const dur = end - c.at + 0.25; if (!live(c.at)) return;
+        const T = at(c.at);
+        const lp = ctx.createBiquadFilter(); lp.type = "lowpass"; lp.Q.value = 1.2;
+        lp.frequency.setValueAtTime(140, T); lp.frequency.exponentialRampToValueAtTime(i === 4 || i === 7 ? 1100 : 700, T + 0.35); lp.frequency.exponentialRampToValueAtTime(220, T + dur);
+        const g = ctx.createGain(); const peak = i === 4 || i === 7 ? 0.16 : 0.11;
+        g.gain.setValueAtTime(0.0001, T); g.gain.exponentialRampToValueAtTime(peak, T + (i === 0 ? 0.45 : 0.06)); g.gain.exponentialRampToValueAtTime(peak * 0.7, T + dur * 0.7); g.gain.exponentialRampToValueAtTime(0.0001, T + dur);
+        [c.root / 2, c.root, c.fifth / 2].forEach((f, j) => [-11, 0, 11].forEach((dt) => {
+          const o = ctx.createOscillator(); o.type = "sawtooth"; o.frequency.value = f; o.detune.value = dt + j * 2; o.connect(lp); o.start(T); o.stop(T + dur + 0.1);
+        }));
+        lp.connect(g); g.connect(brassBus);
+        // the saturated sub under each braam (the very heavy low end)
+        tone(c.at, c.root, dur, { gain: i === 4 || i === 7 ? 0.32 : 0.26, a: i === 0 ? 0.4 : 0.03, dest: sat });
       });
 
-      // tremolo strings: fast-repeated chord tones an octave up, in 32nds
-      for (let k = 0; k < 128; k++) {
-        const t = 1.5 + k * (B / 8); if (t > 11.6) break;
-        const c = chordAt(t), f = c.pad[k % 2 ? 1 : 2] * 2;
-        const lvl = 0.014 + 0.018 * Math.min(1, Math.max(0, (t - 1.5) / 6));
-        tone(t, f, B / 8 * 0.95, { type: "sawtooth", gain: lvl, a: 0.008, dest: padBus, detune: (k % 3) * 5 - 5 });
-        tone(t, f * 2, B / 8 * 0.95, { type: "sawtooth", gain: lvl * 1.1, a: 0.008, dest: padBus, detune: 3 - (k % 3) * 3 });
+      // 2) 8th-note low pulse with my own accent pattern
+      const accents = [1, 0, .6, 1, 0, .6, .8, .5];      // "DUM . da DUM . da da da"
+      for (let k = 0; k < 48; k++) {
+        const t = k * (B / 2); if (t > 11.9) break;
+        const a = accents[k % 8]; if (!a || !live(t)) continue;
+        const c = chordAt(t), d = B / 2 * 0.85, T = at(t);
+        const lp = ctx.createBiquadFilter(); lp.type = "lowpass"; lp.Q.value = 4;
+        lp.frequency.setValueAtTime(260 + 500 * a, T); lp.frequency.exponentialRampToValueAtTime(110, T + d);
+        const g = ctx.createGain(); env(g, T, 0.13 * a * (t < 0.6 ? 0.4 + t : 1), 0.003, d);
+        const o = ctx.createOscillator(); o.type = "square"; o.frequency.value = c.root; o.connect(lp); lp.connect(g); g.connect(lowBus); o.start(T); o.stop(T + d + 0.05);
       }
-      // 16th-note low ostinato; filter opens as the intro builds
-      const acc = [1, .35, .7, .55, 1, .35, .7, .35, 1, .35, .7, .55, 1, .6, .7, .8];
-      for (let k = 0; k < 64; k++) {
-        const t = k * (B / 4); if (t > 11.6) break;
-        const c = chordAt(t); const a = acc[k % 16];
-        const f = (k % 8 === 7) ? c.root * 2 : c.root;              // octave flick at the end of each half bar
-        const open = 260 + 1400 * Math.min(1, t / 9);
-        if (!live(t)) continue;
-        const T = at(t), d = B / 4 * 0.9;
-        const lp = ctx.createBiquadFilter(); lp.type = "lowpass"; lp.Q.value = 6;
-        lp.frequency.setValueAtTime(open * (1 + a), T); lp.frequency.exponentialRampToValueAtTime(Math.max(90, open * 0.45), T + d);
-        const g = ctx.createGain(); env(g, T, 0.075 * a * (t < 1.4 ? t / 1.4 + 0.15 : 1), 0.004, d);
-        [0, 7].forEach((dt) => { const o = ctx.createOscillator(); o.type = "sawtooth"; o.frequency.value = f; o.detune.value = dt; o.connect(lp); o.start(T); o.stop(T + d + 0.05); });
-        lp.connect(g); g.connect(dryBass);
-        tone(t, c.root, d, { gain: 0.11 * a * (t < 1.4 ? t / 1.4 + 0.2 : 1), a: 0.004, dest: dryBass });   // sine body under each pulse
+
+      // 3) the bright edge: a high ticking semitone figure (800–2,500 Hz), 16ths, band-limited
+      const fig = [0, 0, 1, 0, 0, 1, 0, 2, 0, 0, 1, 0, 2, 0, 1, 1];   // 0 = D6, 1 = Eb6 rub, 2 = A5
+      const hz = [1174.66, 1244.51, 880];
+      const bp = ctx.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = 1500; bp.Q.value = 0.5; const topGain = ctx.createGain(); topGain.gain.value = 28; bp.connect(topGain); topGain.connect(topBus);
+      for (let k = 0; k < 96; k++) {
+        const t = 0.5 + k * (B / 4); if (t > 11.4) break;
+        const lvl = (k % 4 === 0 ? 0.05 : 0.032) * (t < 2 ? (t - 0.4) / 1.6 : 1);
+        tone(t, hz[fig[k % 16]], 0.07, { type: "sawtooth", gain: lvl, a: 0.002, dest: bp });
       }
-      // sub drone under everything
-      tone(0, N.D2, 11.9, { gain: 0.02, a: 1.5, dest: dryBass });
+      // a thin high string line that rises a semitone into the cut, then holds
+      tone(1.2, 587.33, 14 * B - 1.2, { type: "sawtooth", gain: 0.13, a: 1.4, dest: topBus });
+      tone(12 * B, 622.25, 2 * B, { type: "sawtooth", gain: 0.13, a: 0.5, dest: topBus });
+      tone(14 * B, 587.33, 8 * B + 1.5, { type: "sawtooth", gain: 0.15, a: 0.05, dest: topBus });
 
-      // drums: low "taiko" hits enter with the header (6.2s), then drive from the map cut
-      const boom = (t, g = 0.5) => { g *= 0.55; tone(t, 110, 0.7, { gain: g * 0.75, f2: 62, a: 0.003, dest: drumBus }); hiss(t, 0.25, { type: "bandpass", f: 260, q: 0.8, gain: g * 0.7, a: 0.002, dest: drumBus }); hiss(t, 0.06, { f: 1600, q: 0.8, gain: g * 0.18, a: 0.001, dest: drumBus }); };
-      const snapHit = (t, g = 0.08) => hiss(t, 0.12, { f: 1800, q: 0.9, gain: g, a: 0.002, dest: drumBus });
-      [bar(1), 6.2].forEach((t) => boom(t, 0.35));
-      [8 * B, 9 * B, 9.5 * B].forEach((t) => boom(t, 0.3));
-      [10, 10.75, 11.5, 12, 12.75, 13, 13.5, 14, 14.75, 15, 15.25, 15.5].forEach((b) => boom(b * B, b === 10 ? 0.75 : 0.42));
-      [11, 13, 15].forEach((b) => snapHit(b * B));
-      for (let b = 10; b < 16; b += 0.25) hiss(b * B, 0.03, { type: "highpass", f: 7500, gain: (b % 1 === 0 ? 0.035 : 0.018), a: 0.001, dest: drumBus }); // ticking hats
-      // the big hit at the map cut: reverse swell into it, sub drop + crash out of it
-      hiss(10 * B - 1.3, 1.3, { f: 400, f2: 5200, q: 0.8, gain: 0.07, a: 1.25, dest: fx });
-      tone(10 * B, 70, 1.4, { gain: 0.22, f2: 34, a: 0.003, dest: drumBus });
-      hiss(10 * B, 2.4, { f: 6500, f2: 1400, q: 0.6, gain: 0.08, a: 0.004, dest: fx });
-      // final hit as the site appears, ringing out underneath it
-      boom(16 * B, 0.8); tone(16 * B, 62, 2.6, { gain: 0.28, f2: 34, a: 0.003, dest: drumBus });
-      hiss(16 * B, 3, { f: 5200, f2: 1200, q: 0.6, gain: 0.08, a: 0.004, dest: fx });
-
-      // dissonant high shimmer (the 800–900 Hz tension band in the reference)
-      [587.33, 622.25].forEach((f, i) => {
-        if (!live(0.4)) return;
-        const T = at(0.4), E = at(12.2);
-        const o = ctx.createOscillator(); o.type = "sawtooth"; o.frequency.value = f;
-        const lvl = i ? 0.008 : 0.028;
-        const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, T); g.gain.exponentialRampToValueAtTime(lvl, T + 2.5); g.gain.setValueAtTime(lvl, E - 1); g.gain.exponentialRampToValueAtTime(0.0001, E);
-        const trem = ctx.createGain(); trem.gain.value = 0.5; const lfo = ctx.createOscillator(); lfo.frequency.value = 11 + i * 1.7; const ld = ctx.createGain(); ld.gain.value = 0.5; lfo.connect(ld); ld.connect(trem.gain);
-        o.connect(trem); trem.connect(g); g.connect(fx); o.start(T); o.stop(E + 0.1); lfo.start(T); lfo.stop(E + 0.1);
-      });
+      // 4) drums: low hits on my own syncopated grid, denser after the cut
+      const hit = (t, g = 0.5) => { tone(t, 120, 0.55, { gain: g * 0.6, f2: 48, a: 0.002, dest: drumBus }); hiss(t, 0.2, { type: "bandpass", f: 220, q: 0.9, gain: g * 0.55, a: 0.002, dest: drumBus }); hiss(t, 0.05, { f: 2200, q: 0.8, gain: g * 0.12, a: 0.001, dest: drumBus }); };
+      [0, 3, 6, 8.5, 10, 11.5, 12, 13, 13.5].forEach((b) => hit(b * B, b < 6 ? 0.3 : 0.38));
+      [14, 15.5, 16, 17, 17.5, 18, 19.5, 20, 20.75, 21, 21.25, 21.5, 21.75].forEach((b) => hit(b * B, b === 14 ? 0.8 : 0.45));
+      for (let b = 14; b < 22; b += 0.5) hiss(b * B, 0.025, { type: "highpass", f: 8000, gain: 0.03, a: 0.001, dest: drumBus });
+      // swell into the cut, then the impact
+      hiss(14 * B - 1.6, 1.6, { f: 300, f2: 6000, q: 0.7, gain: 0.08, a: 1.55, dest: fx });
+      tone(14 * B - 1.2, 300, 1.2, { type: "sawtooth", gain: 0.03, f2: 1200, a: 1.1, dest: fx });
+      tone(14 * B, 58, 1.8, { gain: 0.3, f2: 32, a: 0.002, dest: sat });
+      hiss(14 * B, 2.4, { f: 6000, f2: 1200, q: 0.6, gain: 0.09, a: 0.004, dest: fx });
+      // final hit as the site appears; rings out underneath it
+      hit(22 * B, 0.9); tone(22 * B, 55, 3, { gain: 0.3, f2: 32, a: 0.002, dest: sat });
+      hiss(22 * B, 3.2, { f: 5200, f2: 1000, q: 0.6, gain: 0.09, a: 0.004, dest: fx });
       return true;
     }
 
@@ -953,10 +1054,10 @@
     function preload(src, offset = 0, vol = 70) {
       track.offset = Math.max(0, +offset || 0); track.vol = Math.max(0, Math.min(1.5, (+vol || 0) / 100));
       src = String(src || "").trim();
-      if (src === track.src) return;
+      if (src === track.src && !track.failed) return;
       Object.assign(track, { src, raw: null, buf: null, failed: false, loading: null });
       if (!src) return;
-      track.loading = fetch(src).then((r) => { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); })
+      track.loading = DB.mediaBlob(src).then((b) => b.arrayBuffer())
         .then((a) => { if (track.src === src) track.raw = a; })
         .catch((e) => { if (track.src === src) { track.failed = true; console.warn("Intro music could not be loaded:", src, e); } });
     }
@@ -1052,7 +1153,8 @@
     function fill() {
       if (!el) return;
       const s = S.settings;
-      Sfx.preload(s.introMusic !== false ? s.introMusicSrc : "", s.introMusicOffset, s.introMusicVolume);
+      const tk = (s.introTracks || []).find((t) => t.id === s.introTrackId);
+      Sfx.preload(s.introMusic !== false && tk ? tk.src : "", tk ? tk.offset : 0, tk ? tk.volume : 70);
       $("#in-sys").textContent = `${s.unitShort.toUpperCase()} SYSTEMS`;
       $("#in-logo").textContent = s.unitShort.toUpperCase();
       $("#in-code").textContent = `RTWBN://${s.unitShort.toUpperCase()}-${String(S.events.length).padStart(4, "0")}-공수`;
@@ -1206,7 +1308,7 @@
     if (d.lbview) { UI.lbView = d.lbview; history.replaceState(null, "", "#/leaderboard"); return refresh(); }
     if (d.lbcat) { UI.lbCat = d.lbcat; return refresh(); }
     if (d.more) { const e = S.events.find((x) => x.id === d.more); if (e) t.closest(".att").outerHTML = attendeesHtml(e, 9999); return; }
-    if (d.atab) { if (d.act === "new-op") { UI.editEventId = null; UI.pick = new Set(); } UI.adminTab = d.atab; UI.adminQ = ""; return refresh(); }
+    if (d.atab) { stopPreview(); if (d.act === "new-op") { UI.editEventId = null; UI.pick = new Set(); } UI.adminTab = d.atab; UI.adminQ = ""; return refresh(); }
 
     switch (d.act) {
       case "intro": return Intro.play();
@@ -1235,6 +1337,26 @@
       case "reset": if (confirm("Reset all demo data in this browser?")) { await act(async () => { await DB.resetDemo(); await reload(); }, "Demo data restored"); refresh(); } return;
     }
 
+    if (d.preview) return preview(d.preview);
+    if (d.deltrack) {
+      const t = (S.settings.introTracks || []).find((x) => x.id === d.deltrack);
+      if (!t || !confirm(`Delete "${t.name}"? ${t.path ? "The file is removed from storage." : ""}`)) return;
+      if (MUSIC.playing === t.id) stopPreview();
+      try { await DB.deleteMedia(t.path); } catch (e) { console.warn(e); }
+      return saveMusic({ introTracks: readTrackRows().filter((x) => x.id !== t.id), introTrackId: S.settings.introTrackId === t.id ? "" : S.settings.introTrackId }, "Track deleted");
+    }
+    if (d.act === "music-upload") {
+      const f = MUSIC.staged; if (!f || MUSIC.busy) return;
+      MUSIC.busy = true; t.disabled = true; t.textContent = "Uploading…";
+      const name = ($("#music-name").value || f.name.replace(/\.[^.]+$/, "")).trim().slice(0, 80);
+      try {
+        const up = await DB.uploadMedia(f);
+        const tr = { id: DB.uid(), name, src: up.src, path: up.path, offset: 0, volume: 70, duration: MUSIC.stagedDur > 0 ? MUSIC.stagedDur : 0 };
+        MUSIC.staged = null; MUSIC.stagedDur = 0; MUSIC.busy = false;
+        await saveMusic({ introTracks: readTrackRows().concat(tr), introTrackId: tr.id }, `Uploaded · now playing "${name}"`);
+      } catch (e) { MUSIC.busy = false; t.disabled = false; t.textContent = "Upload"; toast("Upload failed: " + (e.message || e), true); }
+      return;
+    }
     if (d.editev) { const e = S.events.find((x) => x.id === d.editev); UI.editEventId = d.editev; UI.pick = new Set(e ? e.attendees : []); UI.adminTab = "log"; UI.pickQ = ""; scrollTo(0, 0); return render(); }
     if (d.delev) { const e = S.events.find((x) => x.id === d.delev); if (e && confirm(`Delete "${e.title}" (${e.event_date})? Its points are removed from everyone who attended.`)) { await act(async () => { await DB.deleteEvent(e.id); await reload(); }, "Operation deleted"); refresh(); } return; }
     if (d.editmem) { const m = S.byId[d.editmem]; if (m) memberModal(m); return; }
@@ -1273,6 +1395,22 @@
       f.points_each.value = defaultPoints(f.type.value, f.outcome.value); updatePickTotals();
     }
     if (f && f.getAttribute("id") === "ev-form" && t.name === "host_id") updatePickTotals();
+    if (t.id === "music-file") {
+      const f = t.files[0]; MUSIC.staged = null; MUSIC.stagedDur = 0;
+      if (f) {
+        if (f.size > 20 * 1048576) { toast("That file is over 20 MB. Trim or compress it first.", true); t.value = ""; }
+        else if (f.type && !/^audio\//.test(f.type)) { toast("That isn't an audio file.", true); t.value = ""; }
+        else {
+          const dur = await audioDuration(f);
+          if (dur < 0) { toast("This browser can't play that file. Try MP3 or M4A.", true); t.value = ""; }
+          else { MUSIC.staged = f; MUSIC.stagedDur = dur; }
+        }
+      }
+      const n = $("#music-name"); if (n && MUSIC.staged && !n.value) n.value = MUSIC.staged.name.replace(/\.[^.]+$/, "");
+      $("#music-status").textContent = MUSIC.staged ? `${MUSIC.staged.name} · ${(MUSIC.staged.size / 1048576).toFixed(1)} MB · ${fmtDur(MUSIC.stagedDur)}` : "";
+      const b = document.querySelector('[data-act="music-upload"]'); if (b) b.disabled = !MUSIC.staged;
+      return;
+    }
     if (t.id === "lead-file" && t.files[0]) {
       try { const blob = await resizeImage(t.files[0]); pendingPhoto = { blob }; $("#lead-prev").innerHTML = `<img src="${URL.createObjectURL(blob)}" alt=""/>`; }
       catch (e) { toast(e.message, true); }
@@ -1352,6 +1490,12 @@
           if (ok) { closeModal(); refresh(); }
           break;
         }
+        case "music-form": {
+          stopPreview();
+          const pick = f.querySelector('input[name="trackSel"]:checked');
+          await saveMusic({ introTracks: readTrackRows(), introTrackId: pick ? pick.value : "" }, "Music settings saved");
+          break;
+        }
         case "set-form": {
           const s = JSON.parse(JSON.stringify(S.settings));
           ["unitName", "unitShort", "unitNameKr", "kicker", "motto", "heroText", "staffIntro"].forEach((k) => (s[k] = val(k) || s[k]));
@@ -1364,9 +1508,7 @@
           s.introEnabled = f.introEnabled.checked;
           s.introSound = f.introSound.checked;
           s.introMusic = f.introMusic.checked;
-          s.introMusicSrc = val("introMusicSrc");
-          s.introMusicOffset = Math.max(0, parseFloat(val("introMusicOffset")) || 0);
-          s.introMusicVolume = Math.max(0, Math.min(150, parseInt(val("introMusicVolume"), 10) || 0));
+
           const ok = await act(async () => { await DB.saveSettings(s); await reload(); }, "Settings saved");
           if (ok) refresh();
           break;
@@ -1376,7 +1518,7 @@
   });
 
   $("#modal").addEventListener("click", (e) => { if (e.target.id === "modal") closeModal(); });
-  window.addEventListener("hashchange", () => { closeModal(); render(); scrollTo(0, 0); });
+  window.addEventListener("hashchange", () => { closeModal(); stopPreview(); render(); scrollTo(0, 0); });
 
   Intro.boot();
   startHud();
