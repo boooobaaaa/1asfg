@@ -10,8 +10,8 @@
    Security in schema.sql decides who can write.
    ========================================================================== */
 window.SITE_CONFIG = {
-  SUPABASE_URL: "",
-  SUPABASE_ANON_KEY: "",
+  SUPABASE_URL: "https://jppvfbfxffixvqebsrop.supabase.co/",
+  SUPABASE_ANON_KEY: "sb_publishable_Og9P8zIm6Run_yiGzfuvgQ_5cd-L1W1",
 
   // Demo mode only: passcode for the Admin console (ignored when Supabase is on).
   DEMO_ADMIN_PASSCODE: "airborne",
